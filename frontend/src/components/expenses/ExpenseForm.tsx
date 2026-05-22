@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { expenseService, accountService, categoryService } from '../../services/api'
+import { useAuthStore } from '../../stores/authStore'
 import { Account } from '../../types/account'
 import { Category } from '../../types/index'
 import { AlertCircle, Check, Loader2 } from 'lucide-react'
@@ -28,6 +29,7 @@ interface ExpenseFormProps {
 }
 
 export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
+  const { user } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingOptions, setLoadingOptions] = useState(true)
@@ -48,7 +50,7 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
       date: new Date().toISOString().split('T')[0],
       account_id: '',
       category_id: '',
-      currency_code: 'EUR',
+      currency_code: user?.currency_code || 'GNF',
       payment_method: 'credit_card',
       status: 'completed',
       description: ''
@@ -150,7 +152,7 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
               className="w-full pl-3.5 pr-14 py-2 rounded-lg border border-[var(--border)] bg-transparent text-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all placeholder:text-[var(--muted-foreground)]/50"
             />
             <div className="absolute right-3 top-2.5 text-xs font-bold text-[var(--muted-foreground)] uppercase">
-              EUR
+              {user?.currency_code || 'GNF'}
             </div>
           </div>
           {errors.amount && <p className="text-xs text-red-500 font-medium">{errors.amount.message?.toString()}</p>}
@@ -206,7 +208,8 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
             {...register('payment_method')}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all"
           >
-            <option value="credit_card">💳 Carte bancaire</option>
+            <option value="credit_card">💳 Carte de crédit</option>
+            <option value="debit_card">💳 Carte de débit</option>
             <option value="cash">💵 Espèces</option>
             <option value="bank_transfer">🏦 Virement bancaire</option>
             <option value="mobile_money">📱 Mobile money</option>
