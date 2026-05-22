@@ -68,11 +68,11 @@ services:
     image: postgres:16-alpine
     container_name: gestdepense-postgres
     ports:
-      - "5439:5432"
+      - "5432:5432"
     environment:
       POSTGRES_DB: gestdepense
-      POSTGRES_USER: gestdepense
-      POSTGRES_PASSWORD: secret
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Hayy2000
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
