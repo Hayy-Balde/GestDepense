@@ -145,7 +145,7 @@ export default function IncomesPage() {
 
   const isRecurring = watch('is_recurring')
 
-  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n)
+  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
 
   useEffect(() => {
     setLoading(true)

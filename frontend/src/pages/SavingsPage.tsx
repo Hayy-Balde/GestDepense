@@ -123,7 +123,7 @@ export default function SavingsPage() {
   const [expandedTx, setExpandedTx] = useState<Set<string>>(new Set())
 
   const fmt = (n: number) =>
-    new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n)
+    new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
 
   const form = useForm<SavingFormData>({
     defaultValues: {
@@ -474,7 +474,7 @@ export default function SavingsPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              {editingSaving ? '\u270f\ufe0f Modifier l\'objectif' : '\U0001F3C6 Nouvel objectif'}
+              {editingSaving ? '\u270f\ufe0f Modifier l\'objectif' : '🏆 Nouvel objectif'}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {editingSaving
@@ -505,7 +505,7 @@ export default function SavingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="icon">Ic\u00f4ne</Label>
-                <Input id="icon" {...form.register('icon')} placeholder="\U0001F3C6" />
+                <Input id="icon" {...form.register('icon')} placeholder="🏆" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="color">Couleur</Label>
@@ -613,7 +613,7 @@ function TransactionDialog({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
-            {isDeposit ? '\U0001F4E5 D\u00e9poser' : '\U0001F4E4 Retirer'} \u2014 {saving?.name}
+            {isDeposit ? '📥 Déposer' : '📤 Retirer'} — {saving?.name}
           </DialogTitle>
           <DialogDescription className="text-xs">
             {isDeposit
