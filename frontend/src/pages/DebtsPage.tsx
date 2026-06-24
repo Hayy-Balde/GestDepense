@@ -145,7 +145,7 @@ const MOCK_BORROWED: Debt[] = [
 ]
 
 function formatCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount) + ' ' + currency
+  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount ?? 0) + ' ' + currency
 }
 
 function formatDate(dateStr: string): string {

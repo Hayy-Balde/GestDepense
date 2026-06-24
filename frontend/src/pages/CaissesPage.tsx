@@ -23,7 +23,7 @@ const mockCaisses: Caisse[] = [
 ]
 
 function formatCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount) + '\u00A0' + currency
+  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount ?? 0) + '\u00A0' + currency
 }
 
 function getProgressColor(pct: number): string {
@@ -57,6 +57,7 @@ export default function CaissesPage() {
       setCaisses(data.data || [])
     } catch {
       setCaisses(mockCaisses)
+      setError("Backend non connecté — affichage des données d'exemple")
     } finally {
       setLoading(false)
     }

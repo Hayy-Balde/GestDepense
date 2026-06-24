@@ -98,7 +98,7 @@ const PieTooltipContent = ({ active, payload }: { active?: boolean; payload?: To
 
 function formatCurrency(amount: number): string {
   const currency = useAuthStore.getState().user?.currency_code ?? 'GNF'
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount)
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount ?? 0)
 }
 
 const EmptyChart = ({ message = 'Pas assez de données' }: { message?: string }) => (
@@ -118,7 +118,7 @@ const ChartSkeleton = () => (
 export default function AnalyticsPage() {
   const currency = useAuthStore((s) => s.user?.currency_code ?? 'GNF')
   const locFormatCurrency = (amount: number) =>
-    new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount)
+    new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount ?? 0)
 
   const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)

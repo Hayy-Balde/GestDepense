@@ -38,7 +38,7 @@ const TYPE_LUCIDE: Record<AccountType, typeof Building2> = {
 
 const getIcon = (name: string) => TYPE_ICONS[name] || Wallet
 
-const fmt = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0 }).format(n)
+const fmt = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0 }).format(n ?? 0)
 
 export default function AccountsPage() {
   const { user } = useAuthStore()

@@ -50,7 +50,7 @@ export default function DashboardPage() {
   }, [currentMonth, currentYear]);
 
   const fmt = (n: number) =>
-    new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0 }).format(n);
+    new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0 }).format(n ?? 0);
 
   const kpis = [
     {

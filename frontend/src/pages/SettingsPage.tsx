@@ -10,6 +10,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog"
 import { api } from "../services/api"
 import { authService } from "../services/auth"
 import { useAuthStore } from "../stores/authStore"
+import { useUIStore } from "../stores/uiStore"
 import type {} from "../types/auth"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -132,8 +133,11 @@ export default function SettingsPage() {
     }
   }
 
+  const { setTheme: applyTheme } = useUIStore()
+
   const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
     setTheme(newTheme)
+    applyTheme(newTheme)
     setThemeSaving(true)
     try {
       await api.put("/profile/preferences", { preferences: { theme: newTheme } })

@@ -115,7 +115,7 @@ const MOCK_SUBSCRIPTIONS: Subscription[] = [
 ]
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n)
+  new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
 
 const cycleLabel: Record<BillingCycle, string> = {
   weekly: 'Hebdomadaire',

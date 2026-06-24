@@ -123,7 +123,7 @@ export default function BudgetsPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const fmt = (n: number) =>
-    new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n)
+    new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
 
   const defaultFormValues: Record<string, string | number> = {
     total_budget: 0,
