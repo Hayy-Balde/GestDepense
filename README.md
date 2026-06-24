@@ -1,6 +1,6 @@
 # GestDepense — SaaS Premium de Gestion Financière
 
-GestDepense est une application web fullstack de gestion financière personnelle, développée avec **Laravel 12** (API Backend) et **React 19** (Frontend). Le projet est conteneurisé via Docker pour simplifier l'environnement de développement.
+GestDepense est une application web fullstack de gestion financière personnelle, développée avec **Laravel 12** (API Backend) et **React 19** (Frontend).
 
 ---
 
@@ -16,40 +16,42 @@ Le projet est divisé en deux dossiers principaux :
 
 ### Prérequis
 Assurez-vous d'avoir installé sur votre machine :
-- **Docker** & **Docker Compose**
+- **PHP** (8.3+) & **Composer**
 - **Node.js** (v18+) & **npm**
+- **PostgreSQL** (16+)
 
 ### Étape 1 : Démarrer le Backend (Laravel API)
-
-Le backend utilise Docker via l'infrastructure `docker-compose.yml` fournie.
 
 1. **Aller dans le dossier backend :**
    ```bash
    cd backend
    ```
 
-2. **Installer les dépendances PHP (Si vous avez Composer en local) :**
+2. **Installer les dépendances PHP :**
    ```bash
    composer install
    ```
-   *Note: Si vous n'avez pas PHP en local, vous pouvez lancer le conteneur `app` d'abord, puis exécuter `docker compose exec app composer install`.*
 
 3. **Générer le fichier d'environnement :**
-   Le fichier `.env` a déjà été configuré pour pointer vers la base de données PostgreSQL Dockerisée. Si ce n'est pas le cas :
    ```bash
    cp .env.example .env
    php artisan key:generate
    ```
 
-4. **Lancer les conteneurs Docker (Nginx, PHP, PostgreSQL) :**
-   ```bash
-   docker compose up -d
+4. **Configurer la base de données :**
+   Éditez le fichier `.env` et paramétrez vos accès PostgreSQL :
+   ```
+   DB_CONNECTION=pgsql
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_DATABASE=gestdepense
+   DB_USERNAME=postgres
+   DB_PASSWORD=votre_mot_de_passe
    ```
 
-5. **Exécuter les Migrations de la Base de Données :**
-   Une fois la base de données démarrée, créez les tables (avec l'intégrité UUID et les clés étrangères) :
+5. **Exécuter les Migrations :**
    ```bash
-   docker compose exec app php artisan migrate
+   php artisan migrate
    ```
 
 L'API Backend sera accessible sur : **http://localhost:8000**
@@ -69,10 +71,8 @@ Le frontend utilise Vite comme bundler de développement.
    ```
 
 3. **Configurer l'environnement :**
-   Copiez `.env.example` s'il existe, ou assurez-vous que `VITE_API_URL` pointe bien vers votre backend local.
    ```bash
-   # Optionnel si l'API n'est pas sur le port par défaut :
-   # echo "VITE_API_URL=http://localhost:8000/api/v1" > .env
+   echo "VITE_API_URL=http://localhost:8000/api/v1" > .env
    ```
 
 4. **Lancer le serveur de développement :**
@@ -87,7 +87,7 @@ L'interface web sera accessible sur : **http://localhost:5173** (par défaut ave
 ## 🔗 Procédure d'Intégration (API & Frontend)
 
 ### Authentification (Sanctum)
-L'application utilise **Laravel Sanctum** avec l'authentification par **Bearer Token (JWT)**.
+L'application utilise **Laravel Sanctum** avec l'authentification par **Bearer Token**.
 - Lors de l'appel à `/api/v1/auth/login`, l'API renvoie un token `access_token`.
 - Ce token est stocké dans le `localStorage` du frontend par `Zustand` (`authStore.ts`).
 - L'instance `axios` (dans `frontend/src/services/api.ts`) intercepte automatiquement toutes les requêtes sortantes pour y ajouter le header : `Authorization: Bearer <token>`.
@@ -103,16 +103,6 @@ Si le Backend renvoie une erreur `401 Unauthorized` (Token expiré ou invalide),
 ---
 
 ## 🛠 Commandes Utiles
-
-**Vider le cache du Backend :**
-```bash
-docker compose exec app php artisan optimize:clear
-```
-
-**Re-générer les données (Seeders - Bientôt disponibles) :**
-```bash
-docker compose exec app php artisan migrate:fresh --seed
-```
 
 **Construire le Frontend pour la Production :**
 ```bash
