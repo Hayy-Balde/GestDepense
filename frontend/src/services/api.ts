@@ -10,7 +10,6 @@ export const api = axios.create({
   },
 });
 
-// Request Interceptor
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("auth_token");
@@ -22,10 +21,9 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("auth_token");
       window.location.href = "/connexion";
@@ -36,16 +34,18 @@ api.interceptors.response.use(
 
 export const expenseService = {
   getAll: (params?: Record<string, any>) => api.get("/expenses", { params }),
+  getById: (id: string) => api.get(`/expenses/${id}`),
   create: (data: any) => api.post("/expenses", data),
   update: (id: string, data: any) => api.put(`/expenses/${id}`, data),
   delete: (id: string) => api.delete(`/expenses/${id}`),
 };
 
 export const accountService = {
-  getAll: () => api.get("/accounts"),
+  getAll: (params?: Record<string, any>) => api.get("/accounts", { params }),
   getById: (id: string) => api.get(`/accounts/${id}`),
+  create: (data: any) => api.post("/accounts", data),
 };
 
 export const categoryService = {
-  getAll: () => api.get("/categories"),
+  getAll: (params?: Record<string, any>) => api.get("/categories", { params }),
 };

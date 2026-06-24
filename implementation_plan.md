@@ -4,7 +4,7 @@
 
 ## Contexte
 
-Création d'une application fullstack moderne de gestion financière personnelle, inspirée de Linear/Stripe/Notion/Revolut, avec une architecture Laravel 12 + React 19 + TypeScript + PostgreSQL, conteneurisée avec Docker.
+Création d'une application fullstack moderne de gestion financière personnelle, inspirée de Linear/Stripe/Notion/Revolut, avec une architecture Laravel 12 + React 19 + TypeScript + PostgreSQL.
 
 ---
 
@@ -26,7 +26,7 @@ Création d'une application fullstack moderne de gestion financière personnelle
 > [!IMPORTANT]
 > 1. **Nom de domaine / branding** — Le nom « GestDepense » est-il le nom final du produit, ou souhaitez-vous un autre nom (ex: « Finora », « WalletFlow ») ?
 > 2. **Langue de l'UI** — Interface en français uniquement, ou anglais par défaut avec support i18n français ?
-> 3. **Hébergement cible** — VPS classique (Docker Compose) ou cloud (AWS/GCP/Azure) ?
+> 3. **Hébergement cible** — VPS classique ou cloud (AWS/GCP/Azure) ?
 > 4. **API tierce pour les taux de change** — Préférence pour un fournisseur (ex: exchangerate-api.com, Open Exchange Rates) ?
 
 ---
@@ -35,31 +35,26 @@ Création d'une application fullstack moderne de gestion financière personnelle
 
 ```mermaid
 graph TB
-    subgraph Docker["🐳 Docker Compose"]
-        subgraph Frontend["Frontend Container"]
-            React["React 19 + TypeScript + Vite"]
-            Shadcn["shadcn/ui + TailwindCSS"]
-            Zustand["Zustand State"]
-            TanStack["TanStack Query"]
-        end
-        
-        subgraph Backend["Backend Container"]
-            Laravel["Laravel 12 (PHP 8.3)"]
-            Sanctum["Laravel Sanctum"]
-            Queue["Queue Worker"]
-            Scheduler["Task Scheduler"]
-        end
-        
-        subgraph Infra["Infrastructure"]
-            Nginx["Nginx Reverse Proxy"]
-            PostgreSQL["PostgreSQL 16"]
-            Redis["Redis 7"]
-            Supervisor["Supervisor"]
-        end
+    subgraph Frontend["Frontend"]
+        React["React 19 + TypeScript + Vite"]
+        Shadcn["shadcn/ui + TailwindCSS"]
+        Zustand["Zustand State"]
+        TanStack["TanStack Query"]
     end
     
-    React --> |API REST| Nginx
-    Nginx --> Laravel
+    subgraph Backend["Backend"]
+        Laravel["Laravel 12 (PHP 8.3)"]
+        Sanctum["Laravel Sanctum"]
+        Queue["Queue Worker"]
+        Scheduler["Task Scheduler"]
+    end
+    
+    subgraph Infra["Infrastructure"]
+        PostgreSQL["PostgreSQL 16"]
+        Redis["Redis 7"]
+    end
+    
+    React --> |API REST| Laravel
     Laravel --> PostgreSQL
     Laravel --> Redis
     Queue --> Redis
@@ -71,26 +66,9 @@ graph TB
 
 ### Phase 1 — Infrastructure & Fondations
 
-> Setup Docker, Laravel, React, base de données, authentification
+> Setup Laravel, React, base de données, authentification
 
 ---
-
-#### Docker & DevOps
-
-##### [NEW] [docker-compose.yml](file:///Users/admin/Projets/GUINTERSE/GestDepense/docker-compose.yml)
-Services : `app` (PHP-FPM 8.3), `nginx`, `postgres`, `redis`, `frontend` (Node 22), `queue-worker`, `scheduler`
-
-##### [NEW] [docker/Dockerfile.backend](file:///Users/admin/Projets/GUINTERSE/GestDepense/docker/Dockerfile.backend)
-PHP 8.3 FPM avec extensions : pgsql, redis, gd, zip, intl, bcmath
-
-##### [NEW] [docker/Dockerfile.frontend](file:///Users/admin/Projets/GUINTERSE/GestDepense/docker/Dockerfile.frontend)
-Node 22 Alpine, build multi-stage
-
-##### [NEW] [docker/nginx/default.conf](file:///Users/admin/Projets/GUINTERSE/GestDepense/docker/nginx/default.conf)
-Reverse proxy : `/api/*` → backend, `/*` → frontend
-
-##### [NEW] [docker/supervisor/supervisord.conf](file:///Users/admin/Projets/GUINTERSE/GestDepense/docker/supervisor/supervisord.conf)
-Programmes : php-fpm, queue worker, scheduler
 
 ---
 
@@ -622,13 +600,7 @@ php artisan test
 npm run test
 ```
 
-**Docker :**
-```bash
-docker compose up -d
-docker compose exec app php artisan migrate --seed
-# Vérifier http://localhost:3000 (frontend)
-# Vérifier http://localhost:8000/api/v1 (backend)
-```
+
 
 ### Manual Verification
 - Tester le flow complet : inscription → création compte → ajout dépense → visualisation dashboard

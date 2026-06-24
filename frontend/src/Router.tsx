@@ -8,6 +8,7 @@ const LoginPage       = React.lazy(() => import("./pages/auth/LoginPage"));
 const RegisterPage    = React.lazy(() => import("./pages/auth/RegisterPage"));
 const ForgotPassword  = React.lazy(() => import("./pages/auth/ForgotPasswordPage"));
 const VerifyEmail     = React.lazy(() => import("./pages/auth/VerifyEmailPage"));
+const ResetPassword   = React.lazy(() => import("./pages/auth/ResetPasswordPage"));
 
 // App pages
 const DashboardPage     = React.lazy(() => import("./pages/DashboardPage"));
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
   {
     path: "/verifier-email",
     element: <React.Suspense fallback={<Fallback />}><VerifyEmail /></React.Suspense>,
+  },
+  {
+    path: "/reinitialiser-mot-de-passe",
+    element: <React.Suspense fallback={<Fallback />}><ResetPassword /></React.Suspense>,
   },
   // Redirections de compatibilité (anciennes routes anglaises)
   {
