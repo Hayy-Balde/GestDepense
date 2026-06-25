@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   Settings, User, Bell, Palette, Shield, LogOut, Save, Loader2,
-  Eye, EyeOff, Globe, Clock, CreditCard, Smartphone, Moon, Sun,
-  AlertCircle, Check, Trash2, Laptop, ChevronDown, Monitor,
+  Eye, EyeOff, Globe, Clock, CreditCard, Moon, Sun,
+  AlertCircle, Check, Trash2, Laptop, ChevronDown, Monitor, SmartphoneIcon,
+  QrCode, Key, Copy,
 } from "lucide-react"
 import * as Switch from "@radix-ui/react-switch"
 import * as AlertDialog from "@radix-ui/react-alert-dialog"
@@ -11,7 +12,6 @@ import { api } from "../services/api"
 import { authService } from "../services/auth"
 import { useAuthStore } from "../stores/authStore"
 import { useUIStore } from "../stores/uiStore"
-import type {} from "../types/auth"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Badge } from "../components/ui/badge"
@@ -22,9 +22,9 @@ import { cn, getInitials } from "../lib/utils"
 import { CURRENCIES } from "../lib/constants"
 
 const strengthConfig = [
-  { label: "Faible", color: "bg-red-500", min: 0 },
-  { label: "Moyen", color: "bg-yellow-500", min: 2 },
-  { label: "Fort", color: "bg-green-500", min: 4 },
+  { label: "Faible", color: "bg-red-500", min: 0, scoreLabel: "Sécurité : Faible" },
+  { label: "Moyen", color: "bg-yellow-500", min: 2, scoreLabel: "Sécurité : Moyen" },
+  { label: "Fort", color: "bg-green-500", min: 4, scoreLabel: "Sécurité : Fort" },
 ]
 
 function getPasswordStrength(pw: string) {
@@ -36,7 +36,7 @@ function getPasswordStrength(pw: string) {
   if (/[^A-Za-z0-9]/.test(pw)) score++
   const level = score <= 1 ? 0 : score <= 3 ? 1 : 2
   const widths = ["w-1/3", "w-2/3", "w-full"]
-  return { score, label: strengthConfig[level]!.label, color: strengthConfig[level]!.color, width: widths[level] }
+  return { score, label: strengthConfig[level]!.label, color: strengthConfig[level]!.color, width: widths[level], scoreLabel: strengthConfig[level]!.scoreLabel }
 }
 
 const LOCALES = [
@@ -54,16 +54,21 @@ const WEEK_START_OPTIONS = [
   { value: "sunday", label: "Dimanche" },
 ]
 
-const DEVICES = [
-  { name: "iPhone 15 - Safari", icon: Smartphone },
-  { name: "MacBook Pro - Chrome", icon: Laptop },
-]
+interface Session {
+  id: string
+  name: string
+  ip: string
+  user_agent: string
+  last_used_at: string
+  created_at: string
+  is_current: boolean
+}
 
 export default function SettingsPage() {
   const { user, setUser, logout } = useAuthStore()
 
   const [profileName, setProfileName] = useState(user?.name || "")
-  const [profilePhone, setProfilePhone] = useState("")
+  const [profilePhone, setProfilePhone] = useState(user?.phone || "")
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileFeedback, setProfileFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
@@ -78,13 +83,17 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<"light" | "dark" | "system">(user?.preferences?.theme || "system")
   const [themeSaving, setThemeSaving] = useState(false)
 
-  const [emailNotifications, setEmailNotifications] = useState(true)
+  const [notifSaving, setNotifSaving] = useState(false)
+  const [notifFeedback, setNotifFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
+
+  const notifDefaults = user?.preferences ?? {
+    notifications_enabled: true, weekly_report: false, monthly_report: true,
+  }
+  const [emailNotifications, setEmailNotifications] = useState(notifDefaults.notifications_enabled ?? true)
   const [pushNotifications, setPushNotifications] = useState(true)
   const [budgetAlerts, setBudgetAlerts] = useState(true)
   const [paymentReminders, setPaymentReminders] = useState(false)
   const [newsletter, setNewsletter] = useState(false)
-  const [notifSaving, setNotifSaving] = useState(false)
-  const [notifFeedback, setNotifFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const [showCurrentPw, setShowCurrentPw] = useState(false)
   const [showNewPw, setShowNewPw] = useState(false)
@@ -98,20 +107,60 @@ export default function SettingsPage() {
 
   const [deleting, setDeleting] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-
   const [loggingOut, setLoggingOut] = useState(false)
+
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+
+  // 2FA
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
+  const [twoFactorLoading, setTwoFactorLoading] = useState(true)
+  const [qrCodeUri, setQrCodeUri] = useState("")
+  const [twoFactorSecret, setTwoFactorSecret] = useState("")
+  const [twoFactorCode, setTwoFactorCode] = useState("")
+  const [twoFactorVerifySaving, setTwoFactorVerifySaving] = useState(false)
+  const [twoFactorDisableSaving, setTwoFactorDisableSaving] = useState(false)
+  const [twoFactorFeedback, setTwoFactorFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+  const [showRecoveryCodes, setShowRecoveryCodes] = useState(false)
+
+  useEffect(() => {
+    loadSessions()
+    load2FAStatus()
+  }, [])
+
+  const loadSessions = async () => {
+    try {
+      const res = await api.get("/auth/sessions")
+      setSessions(res.data)
+    } catch {
+      // ignore
+    } finally {
+      setSessionsLoading(false)
+    }
+  }
+
+  const load2FAStatus = async () => {
+    try {
+      const res = await api.get("/auth/2fa")
+      setTwoFactorEnabled(res.data.enabled)
+    } catch {
+      // ignore
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
 
   const handleProfileSubmit = async () => {
     setProfileSaving(true)
     setProfileFeedback(null)
     try {
-      const res = await api.put("/profile", { name: profileName, phone: profilePhone })
-      if (res.data.user) setUser(res.data.user)
-      else setUser({ ...user!, name: profileName })
+      const res = await api.put("/auth/profile", { name: profileName, phone: profilePhone })
+      setUser(res.data.user)
       setProfileFeedback({ type: "success", message: "Profil mis à jour avec succès." })
-    } catch {
-      setUser({ ...user!, name: profileName })
-      setProfileFeedback({ type: "success", message: "Profil mis à jour (mode hors-ligne)." })
+    } catch (err: any) {
+      setProfileFeedback({ type: "error", message: err.response?.data?.message || "Erreur lors de la mise à jour." })
     } finally {
       setProfileSaving(false)
     }
@@ -121,13 +170,13 @@ export default function SettingsPage() {
     setPrefSaving(true)
     setPrefFeedback(null)
     try {
-      await api.put("/profile/preferences", {
+      const res = await api.put("/auth/preferences", {
         currency_code: currencyCode, timezone, locale,
-        number_format: numberFormat, week_starts_on: weekStart,
       })
+      setUser(res.data.user)
       setPrefFeedback({ type: "success", message: "Préférences enregistrées." })
     } catch {
-      setPrefFeedback({ type: "success", message: "Préférences enregistrées (mode hors-ligne)." })
+      setPrefFeedback({ type: "error", message: "Erreur lors de l'enregistrement." })
     } finally {
       setPrefSaving(false)
     }
@@ -140,8 +189,11 @@ export default function SettingsPage() {
     applyTheme(newTheme)
     setThemeSaving(true)
     try {
-      await api.put("/profile/preferences", { preferences: { theme: newTheme } })
-    } catch { /* empty */ } finally {
+      const res = await api.put("/auth/preferences", { preferences: { theme: newTheme } })
+      if (res.data.user) setUser(res.data.user)
+    } catch {
+      // ignore
+    } finally {
       setThemeSaving(false)
     }
   }
@@ -150,16 +202,17 @@ export default function SettingsPage() {
     setNotifSaving(true)
     setNotifFeedback(null)
     try {
-      await api.put("/profile/preferences", {
-        email_notifications: emailNotifications,
-        push_notifications: pushNotifications,
-        budget_alerts: budgetAlerts,
-        payment_reminders: paymentReminders,
-        newsletter,
+      const res = await api.put("/auth/preferences", {
+        preferences: {
+          notifications_enabled: emailNotifications,
+          weekly_report: budgetAlerts,
+          monthly_report: paymentReminders,
+        },
       })
+      if (res.data.user) setUser(res.data.user)
       setNotifFeedback({ type: "success", message: "Notifications mises à jour." })
     } catch {
-      setNotifFeedback({ type: "success", message: "Notifications mises à jour (mode hors-ligne)." })
+      setNotifFeedback({ type: "error", message: "Erreur lors de la mise à jour." })
     } finally {
       setNotifSaving(false)
     }
@@ -173,7 +226,7 @@ export default function SettingsPage() {
     setPwSaving(true)
     setPwFeedback(null)
     try {
-      await api.put("/profile/password", {
+      await api.put("/auth/password", {
         current_password: currentPassword,
         new_password: newPassword,
         new_password_confirmation: confirmPassword,
@@ -182,8 +235,9 @@ export default function SettingsPage() {
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
-    } catch {
-      setPwFeedback({ type: "error", message: "Erreur. Vérifiez votre mot de passe actuel." })
+    } catch (err: any) {
+      const msg = err.response?.data?.errors?.current_password?.[0] || "Erreur. Vérifiez votre mot de passe actuel."
+      setPwFeedback({ type: "error", message: msg })
     } finally {
       setPwSaving(false)
     }
@@ -192,8 +246,9 @@ export default function SettingsPage() {
   const handleDeleteAccount = async () => {
     setDeleting(true)
     try {
-      await api.delete("/profile")
+      await api.delete("/auth/account")
     } catch {
+      // ignore
     } finally {
       logout()
     }
@@ -204,10 +259,85 @@ export default function SettingsPage() {
     try {
       await authService.logout()
     } catch {
+      // ignore
     } finally {
       logout()
     }
   }
+
+  const handleRevokeSession = async (id: string) => {
+    setRevokingId(id)
+    try {
+      await api.delete(`/auth/sessions/${id}`)
+      setSessions((prev) => prev.filter((s) => s.id !== id))
+    } catch {
+      // ignore
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
+  const handleEnable2FA = async () => {
+    setTwoFactorFeedback(null)
+    try {
+      const res = await api.post("/auth/2fa/enable")
+      setQrCodeUri(res.data.qr_code_uri)
+      setTwoFactorSecret(res.data.secret)
+      setTwoFactorCode("")
+    } catch (err: any) {
+      setTwoFactorFeedback({ type: "error", message: err.response?.data?.message || "Erreur." })
+    }
+  }
+
+  const handleVerify2FA = async () => {
+    setTwoFactorVerifySaving(true)
+    setTwoFactorFeedback(null)
+    try {
+      const res = await api.post("/auth/2fa/verify", { code: twoFactorCode })
+      setRecoveryCodes(res.data.recovery_codes)
+      setTwoFactorEnabled(true)
+      setShowRecoveryCodes(true)
+      setTwoFactorFeedback({ type: "success", message: "2FA activée avec succès !" })
+    } catch (err: any) {
+      const msg = err.response?.data?.errors?.code?.[0] || err.response?.data?.message || "Code invalide."
+      setTwoFactorFeedback({ type: "error", message: msg })
+    } finally {
+      setTwoFactorVerifySaving(false)
+    }
+  }
+
+  const handleDisable2FA = async () => {
+    if (!twoFactorCode) {
+      setTwoFactorFeedback({ type: "error", message: "Entrez un code 2FA pour désactiver." })
+      return
+    }
+    setTwoFactorDisableSaving(true)
+    setTwoFactorFeedback(null)
+    try {
+      await api.post("/auth/2fa/disable", { code: twoFactorCode })
+      setTwoFactorEnabled(false)
+      setQrCodeUri("")
+      setTwoFactorSecret("")
+      setRecoveryCodes([])
+      setShowRecoveryCodes(false)
+      setTwoFactorCode("")
+      setTwoFactorFeedback({ type: "success", message: "2FA désactivée." })
+    } catch (err: any) {
+      const msg = err.response?.data?.errors?.code?.[0] || err.response?.data?.message || "Code invalide."
+      setTwoFactorFeedback({ type: "error", message: msg })
+    } finally {
+      setTwoFactorDisableSaving(false)
+    }
+  }
+
+  const copyCodes = () => {
+    navigator.clipboard.writeText(recoveryCodes.join("\n"))
+  }
+
+  const feedbackColors = (type: "success" | "error") =>
+    type === "success"
+      ? "bg-green-500/10 border-green-500/20 text-green-600"
+      : "bg-red-500/10 border-red-500/20 text-red-600"
 
   function Feedback({ feedback }: { feedback: { type: "success" | "error"; message: string } | null }) {
     if (!feedback) return null
@@ -215,12 +345,7 @@ export default function SettingsPage() {
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={cn(
-          "flex items-center gap-2 p-3 rounded-lg text-sm border",
-          feedback.type === "success"
-            ? "bg-green-500/10 border-green-500/20 text-green-600"
-            : "bg-red-500/10 border-red-500/20 text-red-600"
-        )}
+        className={cn("flex items-center gap-2 p-3 rounded-lg text-sm border", feedbackColors(feedback.type))}
       >
         {feedback.type === "success" ? <Check className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
         <span>{feedback.message}</span>
@@ -443,8 +568,8 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <SwitchField label="Notifications par email" checked={emailNotifications} onCheckedChange={setEmailNotifications} />
               <SwitchField label="Notifications push" checked={pushNotifications} onCheckedChange={setPushNotifications} />
-              <SwitchField label="Alertes de budget" checked={budgetAlerts} onCheckedChange={setBudgetAlerts} />
-              <SwitchField label="Rappels de paiement" checked={paymentReminders} onCheckedChange={setPaymentReminders} />
+              <SwitchField label="Rapport hebdomadaire" checked={budgetAlerts} onCheckedChange={setBudgetAlerts} />
+              <SwitchField label="Rapport mensuel" checked={paymentReminders} onCheckedChange={setPaymentReminders} />
               <SwitchField label="Newsletter" checked={newsletter} onCheckedChange={setNewsletter} />
             </div>
             <div className="flex justify-end">
@@ -456,12 +581,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Section 5: Sécurité */}
+        {/* Section 5: Sécurité - Mot de passe */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-[var(--primary)]" />
-              <CardTitle>Sécurité</CardTitle>
+              <CardTitle>Mot de passe</CardTitle>
             </div>
             <CardDescription>Modifiez votre mot de passe</CardDescription>
           </CardHeader>
@@ -515,11 +640,8 @@ export default function SettingsPage() {
                         className={cn("h-full rounded-full transition-all", strength.color)}
                       />
                     </div>
-                    <p className={cn(
-                      "text-[11px]",
-                      strength.score <= 1 ? "text-red-500" : strength.score <= 3 ? "text-yellow-500" : "text-green-500"
-                    )}>
-                      Sécurité : {strength.label}
+                    <p className={cn("text-[11px]", strength.score <= 1 ? "text-red-500" : strength.score <= 3 ? "text-yellow-500" : "text-green-500")}>
+                      {strength.scoreLabel}
                     </p>
                   </div>
                 )}
@@ -554,7 +676,165 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Section 6: Zone de Danger */}
+        {/* Section 6: Authentification à deux facteurs (2FA) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Key className="w-5 h-5 text-[var(--primary)]" />
+              <CardTitle>Authentification à deux facteurs (2FA)</CardTitle>
+            </div>
+            <CardDescription>
+              {twoFactorLoading
+                ? "Chargement..."
+                : twoFactorEnabled
+                  ? "La 2FA est activée sur votre compte."
+                  : "Ajoutez une couche de sécurité supplémentaire à votre compte."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Feedback feedback={twoFactorFeedback} />
+
+            {!twoFactorLoading && !twoFactorEnabled && !qrCodeUri && (
+              <Button onClick={handleEnable2FA}>
+                <QrCode className="w-4 h-4 mr-2" />
+                Activer la 2FA
+              </Button>
+            )}
+
+            {qrCodeUri && !twoFactorEnabled && (
+              <div className="space-y-4">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Scannez ce QR code avec votre application d'authentification (Google Authenticator, Authy, etc.) :
+                </p>
+                <div className="flex justify-center">
+                  <div className="p-4 bg-white rounded-xl">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUri)}`} alt="QR Code 2FA" className="w-48 h-48" />
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--muted-foreground)] text-center">
+                  Ou saisissez manuellement la clé : <code className="bg-[var(--secondary)] px-1 rounded">{twoFactorSecret}</code>
+                </p>
+                <div className="space-y-1.5 max-w-xs mx-auto">
+                  <Label htmlFor="2fa-code">Code à 6 chiffres</Label>
+                  <Input
+                    id="2fa-code"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    maxLength={6}
+                    className="text-center text-lg tracking-widest"
+                  />
+                </div>
+                <div className="flex justify-center gap-3">
+                  <Button onClick={handleVerify2FA} disabled={twoFactorVerifySaving || twoFactorCode.length !== 6}>
+                    {twoFactorVerifySaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
+                    Vérifier et activer
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {showRecoveryCodes && recoveryCodes.length > 0 && (
+              <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-yellow-600">Codes de récupération</p>
+                  <button onClick={copyCodes} className="text-xs text-[var(--primary)] hover:underline flex items-center gap-1">
+                    <Copy className="w-3 h-3" /> Copier
+                  </button>
+                </div>
+                <p className="text-xs text-yellow-600/80">
+                  Conservez ces codes en lieu sûr. Ils vous permettent de vous connecter si vous perdez l'accès à votre application d'authentification.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {recoveryCodes.map((code, i) => (
+                    <code key={i} className="bg-yellow-500/10 px-2 py-1 rounded text-sm font-mono text-center">{code}</code>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!twoFactorLoading && twoFactorEnabled && !showRecoveryCodes && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Badge variant="success">Activée</Badge>
+                </div>
+                <div className="space-y-1.5 max-w-xs">
+                  <Label htmlFor="2fa-disable-code">Code 2FA pour désactiver</Label>
+                  <Input
+                    id="2fa-disable-code"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    maxLength={6}
+                  />
+                </div>
+                <Button variant="danger" onClick={handleDisable2FA} disabled={twoFactorDisableSaving || twoFactorCode.length !== 6}>
+                  {twoFactorDisableSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Désactiver la 2FA
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Section 7: Sessions */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <SmartphoneIcon className="w-5 h-5 text-[var(--primary)]" />
+              <CardTitle>Sessions actives</CardTitle>
+            </div>
+            <CardDescription>Appareils connectés à votre compte</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {sessionsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--muted-foreground)]" />
+              </div>
+            ) : sessions.length === 0 ? (
+              <p className="text-sm text-[var(--muted-foreground)]">Aucune session active.</p>
+            ) : (
+              <div className="space-y-3">
+                {sessions.map((session) => (
+                  <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--secondary)]/50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Laptop className="w-5 h-5 text-[var(--muted-foreground)] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm text-[var(--foreground)] truncate">{session.name}</p>
+                        <p className="text-xs text-[var(--muted-foreground)] truncate">
+                          {session.user_agent !== "N/A" ? session.user_agent.split("/")[0] : "Inconnu"}
+                          {" · "}
+                          {session.last_used_at !== "Jamais" ? `Actif ${session.last_used_at}` : session.created_at}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={session.is_current ? "success" : "secondary"}>
+                        {session.is_current ? "Actuelle" : "Active"}
+                      </Badge>
+                      {!session.is_current && (
+                        <button
+                          onClick={() => handleRevokeSession(session.id)}
+                          disabled={revokingId === session.id}
+                          className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                        >
+                          {revokingId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Révoquer"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Separator />
+            <Button variant="danger" onClick={handleLogout} disabled={loggingOut} className="w-full">
+              {loggingOut ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />}
+              Déconnexion
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Section 8: Zone de Danger */}
         <Card className="border-red-500/50">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -601,35 +881,6 @@ export default function SettingsPage() {
                 </AlertDialog.Portal>
               </AlertDialog.Root>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Section 7: Session */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-[var(--primary)]" />
-              <CardTitle>Session</CardTitle>
-            </div>
-            <CardDescription>Appareils connectés et déconnexion</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              {DEVICES.map((device, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-[var(--secondary)]/50">
-                  <div className="flex items-center gap-3">
-                    <device.icon className="w-5 h-5 text-[var(--muted-foreground)]" />
-                    <span className="text-sm text-[var(--foreground)]">{device.name}</span>
-                  </div>
-                  <Badge variant="success">Actif</Badge>
-                </div>
-              ))}
-            </div>
-            <Separator />
-            <Button variant="danger" onClick={handleLogout} disabled={loggingOut} className="w-full">
-              {loggingOut ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />}
-              Déconnexion
-            </Button>
           </CardContent>
         </Card>
       </div>
