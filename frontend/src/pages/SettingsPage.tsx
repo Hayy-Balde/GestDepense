@@ -850,7 +850,7 @@ export default function SettingsPage() {
                       <div className="min-w-0">
                         <p className="text-sm text-[var(--foreground)] truncate">{session.name}</p>
                         <p className="text-xs text-[var(--muted-foreground)] truncate">
-                          {session.user_agent !== "N/A" ? session.user_agent.split("/")[0] : "Inconnu"}
+                          {session.ip !== "N/A" ? `IP: ${session.ip}` : ""}
                           {" · "}
                           {session.last_used_at !== "Jamais" ? `Actif ${session.last_used_at}` : session.created_at}
                         </p>
