@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Helpers\UserAgentParser;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -49,7 +50,8 @@ class SocialAuthController extends Controller
         }
 
         $user->tokens()->delete();
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $deviceName = UserAgentParser::deviceName($request->userAgent());
+        $token = $user->createToken($deviceName)->plainTextToken;
 
         $user->tokens()->latest()->first()->update([
             'ip' => $request->ip(),

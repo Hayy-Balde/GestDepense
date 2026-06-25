@@ -140,6 +140,13 @@ class Worker
     public static $reportJobExceptions = true;
 
     /**
+     * Indicates if the worker should stop when a lost connection is detected.
+     *
+     * @var bool
+     */
+    public static $stopOnLostConnection = true;
+
+    /**
      * Indicates if the worker should check for the restart signal in the cache.
      *
      * @var bool
@@ -509,7 +516,7 @@ class Worker
      */
     protected function stopWorkerIfLostConnection($e)
     {
-        if ($this->causedByLostConnection($e)) {
+        if (static::$stopOnLostConnection && $this->causedByLostConnection($e)) {
             $this->lostConnection = true;
         }
     }
@@ -580,6 +587,10 @@ class Worker
                 );
 
                 $this->markJobAsFailedIfWillExceedMaxExceptions(
+                    $connectionName, $job, $e
+                );
+
+                $this->markJobAsFailedIfItShouldntBeRetried(
                     $connectionName, $job, $e
                 );
             }
@@ -680,6 +691,21 @@ class Worker
         if ($maxExceptions <= $this->cache->increment('job-exceptions:'.$uuid)) {
             $this->cache->forget('job-exceptions:'.$uuid);
 
+            $this->failJob($job, $e);
+        }
+    }
+
+    /**
+     * Mark the given job as failed if the exception handler determines it should not be retried.
+     *
+     * @param  string  $connectionName
+     * @param  \Illuminate\Contracts\Queue\Job  $job
+     * @param  \Throwable  $e
+     * @return void
+     */
+    protected function markJobAsFailedIfItShouldntBeRetried($connectionName, $job, Throwable $e)
+    {
+        if (method_exists($this->exceptions, 'shouldStopRetries') && $this->exceptions->shouldStopRetries($e)) {
             $this->failJob($job, $e);
         }
     }
@@ -848,9 +874,10 @@ class Worker
      *
      * @param  string|null  $connectionName
      * @param  string|null  $queue
+     * @param  \Illuminate\Queue\WorkerOptions|null  $options
      * @return void
      */
-    protected function listenForSignals($connectionName = null, $queue = null, $options = null)
+    protected function listenForSignals($connectionName = null, $queue = null, ?WorkerOptions $options = null)
     {
         pcntl_async_signals(true);
 
