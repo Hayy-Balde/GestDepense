@@ -33,6 +33,9 @@ Route::prefix('v1/auth')->group(function () {
         Route::get('sessions', [SettingsController::class, 'sessions']);
         Route::delete('sessions/{id}', [SettingsController::class, 'revokeSession']);
 
+        // Avatar
+        Route::post('avatar', [SettingsController::class, 'updateAvatar']);
+
         // 2FA
         Route::get('2fa', [SettingsController::class, 'twoFactorStatus']);
         Route::post('2fa/enable', [SettingsController::class, 'enable2fa']);

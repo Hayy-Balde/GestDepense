@@ -31,6 +31,11 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        $user->tokens()->latest()->first()->update([
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
         return response()->json([
             'access_token' => $token,
             'token_type' => 'Bearer',
@@ -51,6 +56,12 @@ class AuthController extends Controller
         $user->tokens()->delete();
 
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Save IP and user agent on the token
+        $user->tokens()->latest()->first()->update([
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         return response()->json([
             'access_token' => $token,
