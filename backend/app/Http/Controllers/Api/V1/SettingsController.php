@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use OTPHP\TOTP;
-use ParagonIE\ConstantTime\Base32;
 
 class SettingsController extends Controller
 {
@@ -99,6 +99,8 @@ class SettingsController extends Controller
 
     public function sessions(Request $request)
     {
+        $currentTokenId = $request->user()->currentAccessToken()->id ?? null;
+
         $tokens = $request->user()->tokens()
             ->orderBy('last_used_at', 'desc')
             ->get()
@@ -109,9 +111,7 @@ class SettingsController extends Controller
                 'user_agent' => $token->user_agent ?? 'N/A',
                 'last_used_at' => $token->last_used_at?->diffForHumans() ?? 'Jamais',
                 'created_at' => $token->created_at->diffForHumans(),
-                'is_current' => $token->id === $request->bearerToken()
-                    ? false
-                    : optional($request->user()->currentAccessToken())->id === $token->id,
+                'is_current' => $token->id === $currentTokenId,
             ]);
 
         return response()->json($tokens);
@@ -138,10 +138,10 @@ class SettingsController extends Controller
             return response()->json(['message' => '2FA déjà activée.'], 400);
         }
 
-        $secret = Base32::encodeUpper(random_bytes(20));
-        $otp = TOTP::create($secret);
+        $otp = TOTP::create();
         $otp->setLabel($user->email);
         $otp->setIssuer(config('app.name'));
+        $secret = $otp->getSecret();
 
         $user->update([
             'two_factor_secret' => $secret,
@@ -221,6 +221,27 @@ class SettingsController extends Controller
 
         return response()->json([
             'message' => '2FA désactivée.',
+        ]);
+    }
+
+    public function updateAvatar(Request $request)
+    {
+        $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+        ]);
+
+        $user = $request->user();
+
+        if ($user->avatar && ! str_starts_with($user->avatar, 'http')) {
+            Storage::disk('public')->delete($user->avatar);
+        }
+
+        $path = $request->file('avatar')->store('avatars', 'public');
+        $user->update(['avatar' => Storage::disk('public')->url($path)]);
+
+        return response()->json([
+            'message' => 'Avatar mis à jour.',
+            'user' => $user->fresh(),
         ]);
     }
 

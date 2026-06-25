@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Laravel\Socialite\Facades\Socialite;
 use Illuminate\Support\Str;
 
@@ -16,7 +17,7 @@ class SocialAuthController extends Controller
             ->redirect();
     }
 
-    public function callback(string $provider)
+    public function callback(Request $request, string $provider)
     {
         $socialUser = Socialite::driver($provider)->stateless()->user();
 
@@ -49,6 +50,11 @@ class SocialAuthController extends Controller
 
         $user->tokens()->delete();
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        $user->tokens()->latest()->first()->update([
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         $frontendUrl = env('FRONTEND_URL', 'https://gestdepense.vercel.app');
 
