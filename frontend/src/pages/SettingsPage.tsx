@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Settings, User, Bell, Palette, Shield, LogOut, Save, Loader2,
   Eye, EyeOff, Globe, Clock, CreditCard, Moon, Sun,
   AlertCircle, Check, Trash2, Laptop, ChevronDown, Monitor, SmartphoneIcon,
-  QrCode, Key, Copy,
+  QrCode, Key, Copy, Camera,
 } from "lucide-react"
 import * as Switch from "@radix-ui/react-switch"
 import * as AlertDialog from "@radix-ui/react-alert-dialog"
@@ -71,6 +71,8 @@ export default function SettingsPage() {
   const [profilePhone, setProfilePhone] = useState(user?.phone || "")
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileFeedback, setProfileFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [currencyCode, setCurrencyCode] = useState(user?.currency_code || "EUR")
   const [timezone, setTimezone] = useState(user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
@@ -243,6 +245,27 @@ export default function SettingsPage() {
     }
   }
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarUploading(true)
+    setProfileFeedback(null)
+    try {
+      const formData = new FormData()
+      formData.append("avatar", file)
+      const res = await api.post("/auth/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      setUser(res.data.user)
+      setProfileFeedback({ type: "success", message: "Photo de profil mise à jour." })
+    } catch {
+      setProfileFeedback({ type: "error", message: "Erreur lors du téléchargement." })
+    } finally {
+      setAvatarUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
   const handleDeleteAccount = async () => {
     setDeleting(true)
     try {
@@ -393,8 +416,33 @@ export default function SettingsPage() {
           <CardContent className="space-y-6">
             <Feedback feedback={profileFeedback} />
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-[var(--primary)] flex items-center justify-center text-white font-bold text-lg shrink-0">
-                {user ? getInitials(user.name) : <User className="w-6 h-6" />}
+              <div className="relative group shrink-0">
+                <div className="w-16 h-16 rounded-full bg-[var(--primary)] flex items-center justify-center text-white font-bold text-lg overflow-hidden">
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    user ? getInitials(user.name) : <User className="w-6 h-6" />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  {avatarUploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  ) : (
+                    <Camera className="w-5 h-5 text-white" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
               </div>
               <div>
                 <p className="font-semibold text-[var(--foreground)]">{user?.name}</p>
