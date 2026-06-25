@@ -156,7 +156,7 @@ export default function LoginPage() {
       {/* Social buttons */}
       <div className="grid grid-cols-1 gap-3">
         <a
-          href={`${(import.meta.env.VITE_API_URL || 'https://gestdepense-api.onrender.com/api/v1').replace(/\/api\/v1\/?$/, '')}/api/auth/google/redirect`}
+          href={`${(import.meta.env.VITE_API_URL || 'https://gestdepense-api.onrender.com/api/v1').replace(/\/api\/v1\/?$/, '')}api/auth/google/redirect`}
           className="flex items-center justify-center gap-2 h-11 rounded-xl border border-[var(--border)] bg-[var(--card)] text-sm font-medium text-[var(--foreground)] hover:bg-[var(--secondary)] transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
