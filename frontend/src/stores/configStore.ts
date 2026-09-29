@@ -123,7 +123,7 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   accountTypes: DEFAULT_ACCOUNT_TYPES.map((t) => ({
     value: t.value,
     label: t.label,
-    icon: t.icon.name,
+    icon: t.icon,
     color: t.color,
     is_active: true,
   })),

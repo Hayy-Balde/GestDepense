@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Move, History, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, Wallet, FolderOpen, ExternalLink, Settings2, Lock, XCircle } from "lucide-react"
+import { Move, History, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, Wallet, FolderOpen, ExternalLink, Settings2, Lock, XCircle, HandCoins, Banknote, Undo2 } from "lucide-react"
 import { movementService } from "../services/api"
 import { useAuthStore } from "../stores/authStore"
 import type { Movement, MovementType } from "../types"
@@ -18,6 +18,10 @@ const TYPE_LABELS: Record<MovementType, string> = {
   caisse_refund: "Restitution caisse",
   caisse_close: "Clôture caisse",
   out: "Perte",
+  debt_lend: "Prêt accordé",
+  debt_borrow: "Emprunt",
+  debt_repayment: "Remboursement",
+  debt_reversal: "Annulation de dette",
 }
 
 const TYPE_ICONS: Record<MovementType, typeof Move> = {
@@ -30,6 +34,10 @@ const TYPE_ICONS: Record<MovementType, typeof Move> = {
   caisse_refund: ArrowUpRight,
   caisse_close: Lock,
   out: XCircle,
+  debt_lend: HandCoins,
+  debt_borrow: Banknote,
+  debt_repayment: Undo2,
+  debt_reversal: XCircle,
 }
 
 const TYPE_ORDER: MovementType[] = [

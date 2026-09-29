@@ -7,7 +7,7 @@ import { DashboardOverview } from "../types/index";
 import type { Movement } from "../types";
 import {
   TrendingDown, TrendingUp, Wallet, Loader2, ChevronLeft, ChevronRight,
-  PiggyBank, Plus, ArrowUpRight, ArrowDownRight, History, FolderOpen,
+  PiggyBank, HandCoins, Plus, ArrowUpRight, ArrowDownRight, History, FolderOpen,
 } from "lucide-react";
 import { MONTHS } from "../lib/constants";
 import {
@@ -15,6 +15,7 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { cn } from "../lib/utils";
+import { resolveIcon } from "../lib/iconMap";
 import { DashboardTransactionsModal, type CardTxnKind } from "../components/dashboard/DashboardTransactionsModal";
 
 const DEFAULT_STATS: DashboardOverview = {
@@ -22,6 +23,7 @@ const DEFAULT_STATS: DashboardOverview = {
   total_incomes: 0,
   available_balance: 0,
   total_savings: 0,
+  caisses_available: 0,
   expense_trend: 0,
   income_trend: 0,
   savings_rate: 0,
@@ -37,6 +39,8 @@ const TYPE_LABELS: Record<string, string> = {
   apport: "Apport", regulation: "Régulation", transfer: "Transfert",
   expense: "Dépense", income: "Revenu", caisse_fund: "Financement caisse",
   caisse_refund: "Restitution caisse", caisse_close: "Clôture caisse", out: "Perte",
+  debt_lend: "Prêt accordé", debt_borrow: "Emprunt",
+  debt_repayment: "Remboursement", debt_reversal: "Annulation de dette",
 };
 
 export default function DashboardPage() {
@@ -45,7 +49,7 @@ export default function DashboardPage() {
   const { openExpense, openIncome } = useQuickAddStore();
   const [stats, setStats] = useState<DashboardOverview>(DEFAULT_STATS);
   const [trends, setTrends] = useState<{ month: string; incomes: number; expenses: number }[]>([]);
-  const [breakdown, setBreakdown] = useState<{ category: string; amount: number; percentage: number; color: string; icon: string; count: number }[]>([]);
+  const [breakdown, setBreakdown] = useState<{ category: string; amount: number; percentage: number; color: string; icon: string | null; count: number }[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export default function DashboardPage() {
           total_incomes: 3_200_000,
           available_balance: 1_950_000,
           total_savings: 500_000,
+          caisses_available: 320_000,
           expense_trend: -5.2,
           income_trend: 8.1,
           savings_rate: 15.6,
@@ -135,6 +140,15 @@ export default function DashboardPage() {
         bg: "bg-[var(--destructive)]/10",
         trend: stats.expense_trend,
         kind: "expenses_month" as CardTxnKind,
+      },
+      {
+        label: "Caisses",
+        sub: "Reste à dépenser",
+        value: stats.caisses_available ?? 0,
+        icon: HandCoins,
+        color: "text-cyan-500",
+        bg: "bg-cyan-500/10",
+        kind: "caisses" as CardTxnKind,
       },
       {
         label: "Épargne",
@@ -223,7 +237,7 @@ export default function DashboardPage() {
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           {kpis.map((kpi) => (
             <button
               key={kpi.label}
@@ -415,17 +429,21 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               </div>
               <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
-                {donutData.slice(0, 6).map((d) => (
+                {donutData.slice(0, 6).map((d) => {
+                  const Icon = resolveIcon(d.icon)
+                  return (
                   <div key={d.category} className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex items-center gap-2 min-w-0">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                      <Icon className="w-4 h-4 shrink-0 text-[var(--muted-foreground)]" />
                       <span className="truncate text-[var(--foreground)]">{d.category}</span>
                     </span>
                     <span className="font-medium text-[var(--muted-foreground)] shrink-0">
                       {d.percentage}% · {fmt(d.amount)}
                     </span>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}

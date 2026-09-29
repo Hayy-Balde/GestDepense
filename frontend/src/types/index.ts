@@ -8,7 +8,7 @@ export interface Caisse {
   name: string
   budget_amount: number
   spent_amount: number
-  icon: string
+  icon: string | null
   color: string
   description: string | null
   created_at: string
@@ -17,12 +17,14 @@ export interface Caisse {
   percentage_used: number
   source_account_id?: string | null
   status?: 'active' | 'closed'
+  currency_code?: string | null
   source_account?: { id: string; name: string; currency_code: string }
 }
 
 export interface CaisseFormData {
   name: string
   budget_amount: number
+  currency_code?: string
   source_account_id?: string
   icon: string
   color: string
@@ -37,11 +39,15 @@ export type MovementType =
   | 'apport' | 'regulation' | 'transfer'
   | 'expense' | 'income' | 'caisse_fund'
   | 'caisse_refund' | 'caisse_close' | 'out'
+  | 'debt_lend' | 'debt_borrow' | 'debt_repayment' | 'debt_reversal'
 
 export interface Movement {
   id: string
   user_id: string
   type: MovementType
+  related_type?: 'debt' | 'debt_payment' | null
+  related_id?: string | null
+  date?: string | null
   from_type: 'account' | 'caisse' | 'external' | null
   from_id: string | null
   to_type: 'account' | 'caisse' | 'external' | null
@@ -66,7 +72,7 @@ export interface Saving {
   target_amount: number
   current_amount: number
   deadline: string | null
-  icon: string
+  icon: string | null
   color: string
   auto_save_amount: number | null
   auto_save_frequency: string | null
@@ -123,7 +129,7 @@ export interface BudgetCategory {
   category_id: string
   allocated_amount: number
   spent_amount: number
-  category?: { id: string; name: string; icon: string; color: string }
+  category?: { id: string; name: string; icon: string | null; color: string }
   remaining: number
   percentage_used: number
 }
@@ -137,7 +143,7 @@ export interface BudgetFormData {
 }
 
 export interface BudgetCategoryUsage {
-  category: { id: string; name: string; color: string; icon: string; is_system: boolean }
+  category: { id: string; name: string; color: string; icon: string | null; is_system: boolean }
   allocated_amount: number
   spent_amount: number
   remaining: number
@@ -166,12 +172,14 @@ export interface Subscription {
   id: string
   user_id: string
   account_id: string | null
+  caisse_id: string | null
+  caisse?: { id: string; name: string; currency_code: string | null } | null
   name: string
   amount: number
   currency_code: string
   billing_cycle: BillingCycle
   next_billing_date: string
-  icon: string
+  icon: string | null
   color: string
   url: string | null
   is_active: boolean
@@ -188,6 +196,7 @@ export interface SubscriptionFormData {
   billing_cycle: BillingCycle
   next_billing_date: string
   account_id?: string
+  caisse_id?: string
   icon: string
   color: string
   url?: string
@@ -200,26 +209,29 @@ export interface SubscriptionFormData {
    ============================================ */
 
 export type DebtType = 'lent' | 'borrowed'
-export type DebtStatus = 'active' | 'partially_paid' | 'paid' | 'overdue'
+export type DebtStatus = 'pending' | 'partially_paid' | 'paid'
 
 export interface Debt {
   id: string
   user_id: string
   account_id: string | null
+  caisse_id: string | null
+  caisse?: { id: string; name: string; currency_code: string | null } | null
   type: DebtType
   person_name: string
   person_contact: string | null
   amount: number
   remaining_amount: number
-  currency_code: string
+  currency_code: string | null
   due_date: string | null
   description: string | null
   status: DebtStatus
+  is_overdue: boolean
+  progress: number
   created_at: string
   updated_at: string
   payments?: DebtPayment[]
   account?: { id: string; name: string; currency_code: string }
-  progress: number
 }
 
 export interface DebtPayment {
@@ -229,6 +241,7 @@ export interface DebtPayment {
   amount: number
   date: string
   note: string | null
+  account?: { id: string; name: string; currency_code: string }
 }
 
 export interface DebtFormData {
@@ -236,10 +249,19 @@ export interface DebtFormData {
   person_name: string
   person_contact?: string
   amount: number
-  currency_code: string
+  currency_code?: string
   due_date?: string
   description?: string
-  account_id: string
+  account_id?: string
+  caisse_id?: string
+}
+
+export interface DebtPaymentFormData {
+  amount: number
+  date: string
+  note?: string
+  account_id?: string
+  caisse_id?: string
 }
 
 /* ============================================
@@ -253,6 +275,8 @@ export interface Invoice {
   id: string
   user_id: string
   account_id: string | null
+  caisse_id: string | null
+  caisse?: { id: string; name: string; currency_code: string | null } | null
   direction: InvoiceDirection
   number: string | null
   counterparty: string
@@ -274,6 +298,8 @@ export interface InvoicePayment {
   id: string
   invoice_id: string
   account_id?: string | null
+  caisse_id?: string | null
+  caisse?: { id: string; name: string; currency_code: string | null } | null
   amount: number
   date: string
   note: string | null
@@ -288,7 +314,8 @@ export interface InvoiceFormData {
   issue_date: string
   due_date?: string
   description?: string
-  account_id: string
+  account_id?: string
+  caisse_id?: string
 }
 
 /* ============================================
@@ -300,6 +327,7 @@ export interface DashboardOverview {
   total_incomes: number
   available_balance: number
   total_savings: number
+  caisses_available?: number
   expense_trend: number
   income_trend: number
   savings_rate: number
@@ -316,7 +344,7 @@ export interface MonthlySummary {
   expenses: number
   savings: number
   surplus: number
-  top_categories: { name: string; amount: number; color: string; icon: string }[]
+  top_categories: { name: string; amount: number; color: string; icon: string | null }[]
   daily_spending: { date: string; amount: number }[]
 }
 
@@ -325,7 +353,7 @@ export interface CategoryBreakdown {
   amount: number
   percentage: number
   color: string
-  icon: string
+  icon: string | null
   count: number
 }
 
@@ -363,13 +391,43 @@ export interface ReportTransaction {
   status?: string | null
 }
 
+export interface ReportDebtEvent extends ReportTransaction {
+  date: string
+  kind: 'revenu' | 'depense'
+}
+
+export interface CashFlowDetail {
+  in: number
+  out: number
+  net: number
+}
+
+export interface CashFlow extends CashFlowDetail {
+  debts: CashFlowDetail
+  invoices: CashFlowDetail
+  subscriptions: CashFlowDetail
+}
+
 export interface ReportSummary {
   interval: { start: string; end: string; label: string }
   accounts: ReportAccount[]
   caisses: ReportCaisse[]
   incomes: ReportTransaction[]
   expenses: ReportTransaction[]
-  totals: { incomes: number; expenses: number; net: number }
+  cash_events?: ReportDebtEvent[]
+  cash_flow?: CashFlow
+  totals: {
+    incomes: number
+    expenses: number
+    net: number
+    incomes_base?: number
+    expenses_base?: number
+    debt_in?: number
+    debt_out?: number
+    invoice_in?: number
+    invoice_out?: number
+    subscription_out?: number
+  }
 }
 
 export interface SearchResultExpense {
@@ -428,7 +486,7 @@ export interface RecentTransaction {
   date: string
   category_name: string
   category_color: string
-  category_icon: string
+  category_icon: string | null
   account_name: string
 }
 
@@ -443,7 +501,7 @@ export interface Category {
   user_id: string | null
   name: string
   type: CategoryTypeEnum
-  icon: string
+  icon: string | null
   color: string
   is_system: boolean
   sort_order: number

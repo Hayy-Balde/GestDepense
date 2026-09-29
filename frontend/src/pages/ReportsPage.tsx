@@ -59,7 +59,17 @@ function buildRows(report: ReportSummary): TransactionRow[] {
     amount: e.amount,
     kind: 'depense',
   }))
-  return [...incomes, ...expenses].sort((a, b) => a.date.localeCompare(b.date))
+  // Dettes, factures et abonnements sont des flux de trésorerie à part entière :
+  // ils doivent apparaître dans le détail et les totaux, sinon le solde net est faux.
+  const cash: TransactionRow[] = (report.cash_events ?? []).map((d) => ({
+    date: d.date,
+    designation: d.title,
+    category: d.category,
+    source: d.account ?? d.source,
+    amount: d.amount,
+    kind: d.kind,
+  }))
+  return [...incomes, ...expenses, ...cash].sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export default function ReportsPage() {
@@ -270,6 +280,7 @@ export default function ReportsPage() {
                 <ArrowUpCircle className="w-4 h-4 text-emerald-500" />
                 <ArrowDownCircle className="w-4 h-4 text-red-500" />
                 Détail des opérations · {report.incomes.length} revenus, {report.expenses.length} dépenses
+                {report.cash_events?.length ? `, ${report.cash_events.length} dettes/factures/abonnements` : ''}
               </CardTitle>
               <CardDescription>Nº · Désignation · Revenu · Dépense</CardDescription>
             </CardHeader>
@@ -324,10 +335,20 @@ export default function ReportsPage() {
                       </tr>
                       <tr className="border-t border-[var(--border)] bg-[var(--muted)]/30">
                         <td className="py-2.5 pr-3" />
-                        <td className="py-2.5 pr-3 font-bold">SOLDE NET</td>
+                        <td className="py-2.5 pr-3 font-extrabold">SOLDE NET</td>
                         <td className="py-2.5 pr-3 text-right font-extrabold">{report.totals.net >= 0 ? '+' : '-'}{loc(Math.abs(report.totals.net))}</td>
                         <td className="py-2.5 text-right" />
                       </tr>
+                      {report.cash_flow && (report.cash_flow.in > 0 || report.cash_flow.out > 0) && (
+                        <tr className="border-t border-[var(--border)] text-[var(--muted-foreground)]">
+                          <td className="py-2 pr-3" />
+                          <td className="py-2 pr-3 text-xs">
+                            dont dettes &amp; factures · entrées {loc(report.cash_flow.in)} / sorties {loc(report.cash_flow.out)}
+                          </td>
+                          <td className="py-2 pr-3 text-right text-xs">+{loc(report.cash_flow.in)}</td>
+                          <td className="py-2 text-right text-xs">-{loc(report.cash_flow.out)}</td>
+                        </tr>
+                      )}
                     </tfoot>
                   )}
                 </table>

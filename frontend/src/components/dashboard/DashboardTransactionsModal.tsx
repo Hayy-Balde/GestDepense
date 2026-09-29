@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Loader2, Wallet, TrendingUp, TrendingDown, PiggyBank, Receipt } from "lucide-react";
+import { Loader2, Wallet, TrendingUp, TrendingDown, PiggyBank, Receipt, HandCoins } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { api } from "../../services/api";
 import type { Account } from "../../types/account";
 import type { Expense } from "../../types/expense";
 import type { Income } from "../../types/income";
-import type { Saving } from "../../types";
+import type { Saving, Caisse } from "../../types";
 import { cn } from "../../lib/utils";
 
 export type CardTxnKind =
@@ -13,6 +13,7 @@ export type CardTxnKind =
   | "incomes_month"
   | "expenses_month"
   | "savings"
+  | "caisses"
   | "incomes_today"
   | "expenses_today"
   | "incomes_week"
@@ -43,6 +44,7 @@ const KIND_META: Record<CardTxnKind, { title: string; icon: typeof Wallet; isOut
   incomes_month: { title: "Revenus du mois", icon: TrendingUp, isOutgoing: false },
   expenses_month: { title: "Dépenses du mois", icon: TrendingDown, isOutgoing: true },
   savings: { title: "Épargne", icon: PiggyBank, isOutgoing: false },
+  caisses: { title: "Caisses", icon: HandCoins, isOutgoing: false },
   incomes_today: { title: "Revenus du jour", icon: TrendingUp, isOutgoing: false },
   expenses_today: { title: "Dépenses du jour", icon: TrendingDown, isOutgoing: true },
   incomes_week: { title: "Revenus de la semaine", icon: TrendingUp, isOutgoing: false },
@@ -91,6 +93,7 @@ export function DashboardTransactionsModal({
       incomes_month: api.get("/incomes", { params: { month, year } }).then((r) => r.data),
       expenses_month: api.get("/expenses", { params: { month, year } }).then((r) => r.data),
       savings: api.get("/savings").then((r) => r.data),
+      caisses: api.get("/caisses").then((r) => r.data),
       incomes_today: api.get("/incomes", { params: { start_date: today, end_date: today } }).then((r) => r.data),
       expenses_today: api.get("/expenses", { params: { start_date: today, end_date: today } }).then((r) => r.data),
       incomes_week: api.get("/incomes", { params: { start_date: start, end_date: end } }).then((r) => r.data),
@@ -104,6 +107,15 @@ export function DashboardTransactionsModal({
           title: a.name,
           subtitle: a.type,
           amount: Number(a.balance),
+          isOutgoing: false,
+        }));
+      }
+      if (kind === "caisses") {
+        return ((data as Caisse[]) ?? []).map((c) => ({
+          id: c.id,
+          title: c.name,
+          subtitle: `Reste ${fmt(Number(c.remaining))} sur ${fmt(Number(c.budget_amount))}`,
+          amount: Number(c.remaining),
           isOutgoing: false,
         }));
       }

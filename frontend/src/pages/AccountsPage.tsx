@@ -9,6 +9,7 @@ import {
   Building2, Banknote, Smartphone, Wallet, PiggyBank, Bitcoin, CreditCard,
   Plus, Loader2, Pencil, Trash2, AlertTriangle, ArrowRightLeft, Settings2, ArrowDownToLine,
 } from "lucide-react"
+import { resolveIcon } from "@/lib/iconMap"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -26,10 +27,6 @@ const MOCK_ACCOUNTS: Account[] = [
   { id: "mock-3", user_id: "mock", name: "Mobile Money", type: "mobile_money", balance: 125_000, currency_code: "GNF", color: "#F59E0B", icon: "Smartphone", is_active: true, credit_limit: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
 ]
 
-const TYPE_ICONS: Record<string, typeof Building2> = {
-  Building2, Banknote, Smartphone, Wallet, PiggyBank, Bitcoin, CreditCard,
-}
-
 const TYPE_LUCIDE: Record<AccountType, typeof Building2> = {
   bank: Building2,
   cash: Banknote,
@@ -40,7 +37,6 @@ const TYPE_LUCIDE: Record<AccountType, typeof Building2> = {
   credit_card: CreditCard,
 }
 
-const getIcon = (name: string) => TYPE_ICONS[name] || Wallet
 
 const fmt = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 0 }).format(n ?? 0)
 
@@ -253,7 +249,7 @@ export default function AccountsPage() {
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
         >
           {accounts.map((account, index) => {
-            const Icon = getIcon(account.icon)
+            const Icon = resolveIcon(account.icon)
             const typeInfo = accountTypes.find(t => t.value === account.type)
             return (
               <motion.div

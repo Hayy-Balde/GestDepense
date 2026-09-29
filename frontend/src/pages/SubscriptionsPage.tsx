@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { resolveIcon } from '@/lib/iconMap'
 import { useForm } from 'react-hook-form'
 import { motion } from 'framer-motion'
 import { format, parseISO, differenceInDays } from 'date-fns'
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { api } from '../services/api'
 import type { Subscription, SubscriptionFormData, BillingCycle } from '../types'
+import type { Account } from '../types/account'
 import { useAuthStore } from '../stores/authStore'
 import { useConfig } from '../hooks/useConfig'
 import { cn } from '../lib/utils'
@@ -40,6 +42,8 @@ import { Label } from '../components/ui/label'
 import { Separator } from '../components/ui/separator'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
+import { useTargets, toTargets } from '../hooks/useTargets'
+import TargetSelect from '../components/money/TargetSelect'
 
 const MOCK_SUBSCRIPTIONS: Subscription[] = [
   {
@@ -164,6 +168,8 @@ export default function SubscriptionsPage() {
   const [editing, setEditing] = useState<Subscription | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const { accounts, caisses } = useTargets()
+  const targets = toTargets(accounts, caisses)
   const { success, error: toastError } = useToastStore()
 
   const deletingSub = subscriptions.find((s) => s.id === confirmDeleteId)
@@ -172,6 +178,9 @@ export default function SubscriptionsPage() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    clearErrors,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<SubscriptionFormData>()
 
@@ -194,6 +203,9 @@ export default function SubscriptionsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
     fetchSubscriptions()
   }, [])
+
+  const accountName = (id: string | null | undefined) =>
+    accounts.find((a: Account) => a.id === id)?.name ?? 'Compte lié'
 
   const annual = (s: Subscription) => Number(s.amount) * annualMultiplier[s.billing_cycle]
 
@@ -238,6 +250,7 @@ export default function SubscriptionsPage() {
       billing_cycle: 'monthly',
       next_billing_date: '',
       account_id: '',
+      caisse_id: '',
       icon: '📱',
       color: '#06B6D4',
       url: '',
@@ -256,7 +269,8 @@ export default function SubscriptionsPage() {
       billing_cycle: sub.billing_cycle,
       next_billing_date: sub.next_billing_date,
       account_id: sub.account_id || '',
-      icon: sub.icon,
+      caisse_id: sub.caisse_id || '',
+      icon: sub.icon ?? '',
       color: sub.color,
       url: sub.url || '',
       is_active: sub.is_active,
@@ -270,6 +284,7 @@ export default function SubscriptionsPage() {
       const payload = {
         ...data,
         account_id: data.account_id || null,
+        caisse_id: data.caisse_id || null,
         url: data.url || null,
       }
       if (editing) {
@@ -320,8 +335,8 @@ export default function SubscriptionsPage() {
   }
 
   const handlePay = async (sub: Subscription) => {
-    if (!sub.account_id) {
-      toastError("Cet abonnement n'a pas de compte lié.")
+    if (!sub.account_id && !sub.caisse_id) {
+      toastError("Cet abonnement n'a aucune source de paiement liée.")
       return
     }
     setDeleting(sub.id)
@@ -516,12 +531,13 @@ export default function SubscriptionsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                          className="w-10 h-10 rounded-lg flex items-center justify-center"
                           style={{
                             backgroundColor: `${sub.color}15`,
+                            color: sub.color,
                           }}
                         >
-                          {sub.icon}
+                          {(() => { const Icon = resolveIcon(sub.icon); return <Icon className="w-5 h-5" /> })()}
                         </div>
                         <div className="min-w-0">
                           <CardTitle className="text-base truncate max-w-[140px]">
@@ -582,11 +598,15 @@ export default function SubscriptionsPage() {
                         </div>
                       )}
 
-                      {/* Account */}
-                      {sub.account_id && (
+                      {/* Cible de paiement */}
+                      {(sub.account_id || sub.caisse_id) && (
                         <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
                           <CreditCard className="w-3 h-3" />
-                          <span>Compte lié</span>
+                          <span>
+                            {sub.caisse
+                              ? `Caisse ${sub.caisse.name}`
+                              : accountName(sub.account_id)}
+                          </span>
                         </div>
                       )}
 
@@ -804,16 +824,18 @@ export default function SubscriptionsPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="account_id">
-                Compte lié <span className="text-[var(--muted-foreground)]">(optionnel)</span>
-              </Label>
-              <Input
-                id="account_id"
-                placeholder="ID du compte"
-                {...register('account_id')}
-              />
-            </div>
+            <TargetSelect
+              id="sub-target"
+              label="Source de paiement"
+              hint="Utilisée à chaque échéance. Un compte permet de payer depuis le solde ; une caisse puise dans son enveloppe de dépenses."
+              value={{ account_id: watch('account_id'), caisse_id: watch('caisse_id') }}
+              targets={targets}
+              onChange={(v) => {
+                setValue('account_id', v.account_id ?? undefined)
+                setValue('caisse_id', v.caisse_id ?? undefined)
+                clearErrors(['account_id', 'caisse_id'])
+              }}
+            />
 
             <div className="space-y-2">
               <Label htmlFor="url">

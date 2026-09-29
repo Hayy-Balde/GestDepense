@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/stores/authStore'
 import { CHART_COLORS } from '@/lib/constants'
+import { resolveIcon } from '@/lib/iconMap'
 
 const periods = [
   { label: '7 jours', value: '7d' },
@@ -331,17 +332,21 @@ export default function AnalyticsPage() {
                   </RePieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2 w-full">
-                  {expenseBreakdown.map((item, i) => (
+                  {expenseBreakdown.map((item, i) => {
+                    const Icon = resolveIcon(item.icon)
+                    return (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color || CHART_COLORS[i % CHART_COLORS.length] }} />
+                        <Icon className="w-4 h-4 shrink-0 text-[var(--muted-foreground)]" />
                         <span className="text-[var(--foreground)]">{item.category}</span>
                       </div>
                       <span className="text-[var(--muted-foreground)]">
                         {item.percentage}%
                       </span>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -380,17 +385,21 @@ export default function AnalyticsPage() {
                   </RePieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2 w-full">
-                  {incomeBreakdown.map((item, i) => (
+                  {incomeBreakdown.map((item, i) => {
+                    const Icon = resolveIcon(item.icon)
+                    return (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color || CHART_COLORS[i % CHART_COLORS.length] }} />
+                        <Icon className="w-4 h-4 shrink-0 text-[var(--muted-foreground)]" />
                         <span className="text-[var(--foreground)]">{item.category}</span>
                       </div>
                       <span className="text-[var(--muted-foreground)]">
                         {item.percentage}%
                       </span>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

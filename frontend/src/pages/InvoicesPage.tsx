@@ -35,6 +35,8 @@ import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
+import { useTargets, toTargets } from '../hooks/useTargets'
+import TargetSelect from '../components/money/TargetSelect'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import { useConfig } from '../hooks/useConfig'
@@ -45,7 +47,8 @@ interface PaymentFormData {
   amount: number
   date: string
   note?: string
-  account_id: string
+  account_id?: string
+  caisse_id?: string
 }
 
 function formatCurrency(amount: number, currency: string): string {
@@ -97,7 +100,8 @@ export default function InvoicesPage() {
 
   const [activeTab, setActiveTab] = useState<TabType>('issued')
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
+  const { accounts, caisses } = useTargets()
+  const targets = toTargets(accounts, caisses)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -124,6 +128,7 @@ export default function InvoicesPage() {
       due_date: '',
       description: '',
       account_id: '',
+      caisse_id: '',
     },
   })
   const createDirection = useWatch({ control: createForm.control, name: 'direction' })
@@ -134,6 +139,7 @@ export default function InvoicesPage() {
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
       account_id: '',
+      caisse_id: '',
     },
   })
 
@@ -161,13 +167,6 @@ export default function InvoicesPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
     fetchInvoices()
-    api
-      .get('/accounts')
-      .then((res) => {
-        const list = res.data?.data || res.data || []
-        setAccounts(Array.isArray(list) ? list : [])
-      })
-      .catch(() => setAccounts([]))
   }, [])
 
   function closeDialog() {
@@ -183,6 +182,7 @@ export default function InvoicesPage() {
       due_date: '',
       description: '',
       account_id: '',
+      caisse_id: '',
     })
   }
 
@@ -240,6 +240,7 @@ export default function InvoicesPage() {
       due_date: invoice.due_date || '',
       description: invoice.description || '',
       account_id: invoice.account_id || '',
+      caisse_id: invoice.caisse_id || '',
     })
     setShowCreateDialog(true)
   }
@@ -252,6 +253,7 @@ export default function InvoicesPage() {
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
       account_id: accounts[0]?.id ?? '',
+      caisse_id: '',
     })
     setShowPaymentDialog(true)
   }
@@ -259,8 +261,8 @@ export default function InvoicesPage() {
   function handleAddPayment(data: PaymentFormData) {
     if (!selectedInvoice) return
     setPaymentError(null)
-    if (!data.account_id) {
-      setPaymentError('Veuillez sélectionner un compte.')
+    if (!data.account_id && !data.caisse_id) {
+      setPaymentError('Veuillez sélectionner un compte ou une caisse.')
       return
     }
     api
@@ -715,22 +717,29 @@ export default function InvoicesPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="invoice-account">Compte (optionnel)</Label>
-              <select
-                id="invoice-account"
-                {...createForm.register('account_id')}
-                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-              >
-                <option value="">-- Aucun — choisi lors du paiement --</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.currency_code})
-                  </option>
-                ))}
-              </select>
+              <TargetSelect
+                id="invoice-target"
+                label="Compte ou caisse (optionnel)"
+                hint={
+                  createDirection === 'issued'
+                    ? 'À laisser vide si vous préférez choisir la source d’encaissement au moment du paiement.'
+                    : 'À laisser vide si vous préférez choisir la source de paiement au moment du règlement.'
+                }
+                accountsOnly={createDirection === 'issued'}
+                value={{
+                  account_id: createForm.watch('account_id'),
+                  caisse_id: createForm.watch('caisse_id'),
+                }}
+                targets={targets}
+                onChange={(v) => {
+                  createForm.setValue('account_id', v.account_id ?? undefined)
+                  createForm.setValue('caisse_id', v.caisse_id ?? undefined)
+                  createForm.clearErrors(['account_id', 'caisse_id'])
+                }}
+              />
               <p className="text-xs text-[var(--muted-foreground)]">
-                L'enregistrement d'une facture ne touche aucun compte. Le compte sera choisi
-                {createDirection === 'issued' ? ' lors de l' + 'encaissement du client.' : ' au moment où vous payez la facture.'}
+                L'enregistrement d'une facture ne déplace aucun argent : c'est un simple
+                libellé par défaut, modifiable à chaque règlement.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -793,26 +802,35 @@ export default function InvoicesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="payment-account">
-                {selectedInvoice?.direction === 'issued'
-                  ? 'Compte d' + 'encaissement — où l' + 'argent arrive *'
-                  : 'Compte de paiement — d' + 'où l' + 'argent part *'}
-              </Label>
-              <select
-                id="payment-account"
-                {...paymentForm.register('account_id', { required: true })}
-                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-              >
-                <option value="">-- Choisir un compte --</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.currency_code})
-                  </option>
-                ))}
-              </select>
-              {paymentForm.formState.errors.account_id && (
-                <p className="text-xs text-red-500 font-medium">Veuillez sélectionner un compte.</p>
-              )}
+              <TargetSelect
+                id="payment-target"
+                label={
+                  selectedInvoice?.direction === 'issued'
+                    ? "Encaissement — où l'argent arrive"
+                    : "Paiement — d'où l'argent part"
+                }
+                required
+                accountsOnly={selectedInvoice?.direction === 'issued'}
+                value={{
+                  account_id: paymentForm.watch('account_id'),
+                  caisse_id: paymentForm.watch('caisse_id'),
+                }}
+                targets={targets}
+                onChange={(v) => {
+                  paymentForm.setValue('account_id', v.account_id ?? undefined, {
+                    shouldValidate: true,
+                  })
+                  paymentForm.setValue('caisse_id', v.caisse_id ?? undefined, {
+                    shouldValidate: true,
+                  })
+                  paymentForm.clearErrors(['account_id', 'caisse_id'])
+                }}
+                error={
+                  (paymentForm.formState.errors.account_id?.message as string) ??
+                  (paymentForm.formState.errors.caisse_id?.message as string) ??
+                  undefined
+                }
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="payment-note">Note</Label>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { resolveIcon } from '@/lib/iconMap'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -169,7 +170,7 @@ export default function SavingsPage() {
       name: saving.name,
       target_amount: saving.target_amount,
       deadline: saving.deadline ? saving.deadline.split('T')[0] : '',
-      icon: saving.icon,
+      icon: saving.icon ?? '',
       color: saving.color,
       account_id: saving.account_id ?? accounts[0]?.id ?? '',
       auto_save_amount: saving.auto_save_amount ?? undefined,
@@ -377,7 +378,9 @@ export default function SavingsPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-2xl">{saving.icon}</span>
+                      <span className="shrink-0 text-[var(--muted-foreground)]">
+                        {(() => { const Icon = resolveIcon(saving.icon); return <Icon className="w-6 h-6" /> })()}
+                      </span>
                       <div>
                         <CardTitle className="text-base">{saving.name}</CardTitle>
                         <CardDescription className="text-xs">

@@ -50,7 +50,19 @@ function buildRows(report: ReportSummary): TransactionRow[] {
     amount: e.amount,
     kind: 'depense',
   }))
-  return [...incomes, ...expenses].sort((a, b) => a.date.localeCompare(b.date))
+  // Dettes, factures et abonnements sont de véritables flux de trésorerie : un
+  // prêt accordé, une facture fournisseur payée ou un abonnement réglé est une
+  // sortie ; un emprunt reçu ou une facture client encaissée une entrée.
+  const cash: TransactionRow[] = (report.cash_events ?? []).map((d) => ({
+    date: d.date ?? '',
+    designation: d.title,
+    category: d.category,
+    source: d.account ?? d.source,
+    amount: d.amount,
+    kind: d.kind,
+  }))
+
+  return [...incomes, ...expenses, ...cash].sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export function generateReportPdf({ report, userName, currency }: PdfReportOptions): void {
@@ -156,6 +168,18 @@ export function generateReportPdf({ report, userName, currency }: PdfReportOptio
   body.push(['', 'TOTAL REVENUS', fmt(totals.incomes, currency), ''])
   body.push(['', 'TOTAL DÉPENSES', '', fmt(totals.expenses, currency)])
   body.push(['', 'SOLDE NET', totals.net >= 0 ? fmt(totals.net, currency) : '', totals.net < 0 ? fmt(Math.abs(totals.net), currency) : ''])
+
+  if (report.cash_flow && (report.cash_flow.in > 0 || report.cash_flow.out > 0)) {
+    body.push([...Array(2)].map(() => '') as string[])
+    body.push(['', 'dont dettes & factures — entrées', fmt(report.cash_flow.in, currency), ''])
+    body.push(['', 'dont dettes & factures — sorties', '', fmt(report.cash_flow.out, currency)])
+    if (report.cash_flow.debts && (report.cash_flow.debts.in > 0 || report.cash_flow.debts.out > 0)) {
+      body.push(['', 'dont dettes', fmt(report.cash_flow.debts.in, currency), fmt(report.cash_flow.debts.out, currency)])
+    }
+    if (report.cash_flow.invoices && (report.cash_flow.invoices.in > 0 || report.cash_flow.invoices.out > 0)) {
+      body.push(['', 'dont factures', fmt(report.cash_flow.invoices.in, currency), fmt(report.cash_flow.invoices.out, currency)])
+    }
+  }
 
   autoTable(doc, {
     startY: y + 2,

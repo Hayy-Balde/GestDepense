@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { motion } from 'framer-motion'
 import { Wallet, Plus, Pencil, Trash2, AlertCircle, ArrowDownToLine, Lock } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { resolveIcon } from '../lib/iconMap'
 import { useAuthStore } from '../stores/authStore'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
@@ -14,6 +15,7 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import type { Caisse, CaisseFormData } from '../types'
+import { useConfig } from '../hooks/useConfig'
 import type { Account } from '../types/account'
 import { MoneyActionModal, DeleteResolutionModal } from '../components/money/MoneyActionModal'
 import type { MoneyActionKind, MoneyEntity } from '../components/money/MoneyActionModal'
@@ -61,7 +63,8 @@ export default function CaissesPage() {
   const currency = user?.currency_code || 'GNF'
   const { success, error: toastError } = useToastStore()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CaisseFormData>()
+  const { currencies } = useConfig()
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CaisseFormData>()
 
   const fetchCaisses = async () => {
     setLoading(true)
@@ -87,13 +90,13 @@ export default function CaissesPage() {
 
   const openCreate = () => {
     setEditingCaisse(null)
-    reset({ name: '', budget_amount: 0, source_account_id: accounts[0]?.id || '', icon: '🎯', color: '#4F46E5', description: '' })
+    reset({ name: '', budget_amount: 0, source_account_id: accounts[0]?.id || '', currency_code: accounts[0]?.currency_code || currency, icon: '🎯', color: '#4F46E5', description: '' })
     setDialogOpen(true)
   }
 
   const openEdit = (c: Caisse) => {
     setEditingCaisse(c)
-    reset({ name: c.name, budget_amount: c.budget_amount, source_account_id: c.source_account_id || '', icon: c.icon, color: c.color, description: c.description || '' })
+    reset({ name: c.name, budget_amount: c.budget_amount, source_account_id: c.source_account_id || '', currency_code: c.currency_code || currency, icon: c.icon ?? '', color: c.color, description: c.description || '' })
     setDialogOpen(true)
   }
 
@@ -123,6 +126,7 @@ export default function CaissesPage() {
           user_id: '',
           name: formData.name,
           budget_amount: formData.budget_amount,
+          currency_code: formData.currency_code,
           spent_amount: 0,
           icon: formData.icon,
           color: formData.color,
@@ -277,7 +281,12 @@ const summaryCurrency = caisses.length > 0
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-2xl shrink-0">{caisse.icon || '🎯'}</span>
+                      <span className="shrink-0 text-[var(--muted-foreground)]">
+                        {(() => {
+                          const Icon = resolveIcon(caisse.icon)
+                          return <Icon className="w-6 h-6" />
+                        })()}
+                      </span>
                       <div className="min-w-0">
                         <h3 className="font-semibold text-[var(--foreground)] truncate">{caisse.name}</h3>
                         <p className="text-xs text-[var(--muted-foreground)] truncate">
@@ -372,6 +381,14 @@ const summaryCurrency = caisses.length > 0
                 <select
                   id="source_account_id"
                   {...register('source_account_id', { required: 'Choisissez un compte source' })}
+                  onChange={(e) => {
+                    const acc = accounts.find((a) => a.id === e.target.value)
+                    setValue('source_account_id', e.target.value)
+                    // La devise suit le compte par défaut ; l'utilisateur reste
+                    // libre de la changer si le compte alimenté n'est pas dans
+                    // la même devise (une conversion sera appliquée).
+                    if (acc) setValue('currency_code', acc.currency_code)
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-[var(--primary)] focus:outline-none"
                 >
                   {accounts.map(a => (
@@ -379,6 +396,28 @@ const summaryCurrency = caisses.length > 0
                   ))}
                 </select>
                 {errors.source_account_id && <p className="text-xs text-[var(--destructive)]">{errors.source_account_id.message}</p>}
+              </div>
+            )}
+            {!editingCaisse && (
+              <div className="space-y-2">
+                <Label htmlFor="currency_code">Devise de la caisse</Label>
+                <select
+                  id="currency_code"
+                  {...register('currency_code', { required: 'Choisissez une devise' })}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-[var(--primary)] focus:outline-none"
+                >
+                  {currencies.map((c) => (
+                    <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                  ))}
+                </select>
+                {watch('source_account_id') &&
+                  accounts.find((a) => a.id === watch('source_account_id'))?.currency_code !==
+                    watch('currency_code') && (
+                    <p className="text-xs text-[var(--muted-foreground)]">
+                      Différente du compte source : le montant sera converti au taux en vigueur.
+                    </p>
+                  )}
+                {errors.currency_code && <p className="text-xs text-[var(--destructive)]">{errors.currency_code.message}</p>}
               </div>
             )}
             <div className="grid grid-cols-2 gap-4">

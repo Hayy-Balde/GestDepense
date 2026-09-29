@@ -28,13 +28,13 @@ import {
    ============================================ */
 
 export const ACCOUNT_TYPES = [
-  { value: 'bank', label: 'Compte Bancaire', icon: Building2, color: '#4F46E5' },
-  { value: 'cash', label: 'Espèces', icon: Banknote, color: '#16A34A' },
-  { value: 'mobile_money', label: 'Mobile Money', icon: Smartphone, color: '#F59E0B' },
-  { value: 'wallet', label: 'Portefeuille', icon: Wallet, color: '#8B5CF6' },
-  { value: 'crypto', label: 'Crypto', icon: Bitcoin, color: '#F97316' },
-  { value: 'savings', label: 'Épargne', icon: PiggyBank, color: '#EC4899' },
-  { value: 'credit_card', label: 'Carte de Crédit', icon: CreditCard, color: '#0EA5E9' },
+  { value: 'bank', label: 'Compte Bancaire', icon: 'building-2', color: '#4F46E5' },
+  { value: 'cash', label: 'Espèces', icon: 'banknote', color: '#16A34A' },
+  { value: 'mobile_money', label: 'Mobile Money', icon: 'smartphone', color: '#F59E0B' },
+  { value: 'wallet', label: 'Portefeuille', icon: 'wallet', color: '#8B5CF6' },
+  { value: 'crypto', label: 'Crypto', icon: 'bitcoin', color: '#F97316' },
+  { value: 'savings', label: 'Épargne', icon: 'piggy-bank', color: '#EC4899' },
+  { value: 'credit_card', label: 'Carte de Crédit', icon: 'credit-card', color: '#0EA5E9' },
 ] as const
 
 /* ============================================
