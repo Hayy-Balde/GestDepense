@@ -17,6 +17,10 @@ export const authService = {
     const res = await api.get("/auth/user");
     return res.data;
   },
+  verifyPassword: async (password: string) => {
+    const res = await api.post("/auth/verify-password", { password });
+    return res.data;
+  },
   forgotPassword: async (data: ForgotPasswordRequest) => {
     const res = await api.post("/auth/forgot-password", data);
     return res.data;

@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, ArrowDownCircle, ArrowUpCircle, Wallet, FolderOpen,
   PiggyBank, Calculator, RefreshCw, HandCoins, BarChart3, Settings,
-  ChevronLeft, ChevronRight, LogOut, X,
+  ChevronLeft, ChevronRight, LogOut, X, ChevronDown, Building2, CreditCard,
+  Bitcoin, Tags, History, ArrowRightLeft, FileSpreadsheet, Receipt,
 } from 'lucide-react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -22,20 +24,37 @@ const navItems = [
   ]},
   { section: 'Finances', items: [
     { path: '/caisses', label: 'Caisses', icon: FolderOpen },
+    { path: '/mouvements', label: 'Mouvements', icon: History },
+    { path: '/migration', label: 'Migration', icon: ArrowRightLeft },
+    { path: '/rapports', label: 'Rapports', icon: FileSpreadsheet },
     { path: '/epargnes', label: 'Épargnes', icon: PiggyBank },
     { path: '/budgets', label: 'Budgets', icon: Calculator },
   ]},
   { section: 'Autres', items: [
     { path: '/abonnements', label: 'Abonnements', icon: RefreshCw },
     { path: '/dettes', label: 'Dettes', icon: HandCoins },
+    { path: '/factures', label: 'Factures', icon: Receipt },
     { path: '/analytiques', label: 'Analytiques', icon: BarChart3 },
   ]},
+]
+
+const configItems = [
+  { path: '/configuration/types-de-comptes', label: 'Types de Comptes', icon: Building2 },
+  { path: '/configuration/methodes-de-paiement', label: 'Méthodes de Paiement', icon: CreditCard },
+  { path: '/configuration/cycles-de-facturation', label: 'Cycles de Facturation', icon: RefreshCw },
+  { path: '/configuration/types-de-dette', label: 'Types de Dettes', icon: HandCoins },
+  { path: '/configuration/devises', label: 'Devises', icon: Bitcoin },
+  { path: '/configuration/categories', label: 'Catégories', icon: Tags },
 ]
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, setMobileMenuOpen } = useUIStore()
   const { user, logout } = useAuthStore()
   const location = useLocation()
+  const [configOpen, setConfigOpen] = useState(() =>
+    location.pathname.startsWith('/configuration'),
+  )
+  const configActive = configItems.some((item) => location.pathname === item.path)
 
   return (
     <>
@@ -69,8 +88,8 @@ export function Sidebar() {
           </div>
           {!sidebarCollapsed && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col">
-              <span className="font-bold text-base tracking-tight">GestDepense</span>
-              <span className="text-[10px] text-[var(--muted-foreground)] -mt-0.5">Finance Manager</span>
+              <span className="font-bold text-base tracking-tight">Fin-Track</span>
+              <span className="text-[10px] text-[var(--muted-foreground)] -mt-0.5">Suivi de finances</span>
             </motion.div>
           )}
 
@@ -119,6 +138,75 @@ export function Sidebar() {
               </div>
             </div>
           ))}
+
+          {/* Configuration section */}
+          <div>
+            {!sidebarCollapsed && (
+              <h3 className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Configuration
+              </h3>
+            )}
+            {sidebarCollapsed ? (
+              <div className="space-y-1">
+                <div className="flex items-center justify-center px-3 py-2.5 rounded-xl text-[var(--muted-foreground)]">
+                  <Settings className="w-5 h-5 shrink-0" />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <NavLink
+                  to="/configuration"
+                  onClick={() => { setConfigOpen(!configOpen); setMobileMenuOpen(false) }}
+                  className={cn(
+                    'flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                    'hover:bg-[var(--secondary)]',
+                    configActive && 'bg-[var(--secondary)]/60 text-[var(--foreground)]',
+                    'text-[var(--muted-foreground)]',
+                  )}
+                >
+                  <span className="flex items-center gap-3">
+                    <Settings className="w-5 h-5 shrink-0" />
+                    <span>Configuration</span>
+                  </span>
+                  <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform duration-200', configOpen && 'rotate-180')} />
+                </NavLink>
+
+                <AnimatePresence initial={false}>
+                  {configOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-1 space-y-1 pl-4 border-l border-[var(--border)]">
+                        {configItems.map((item) => {
+                          const isActive = location.pathname === item.path
+                          return (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              onClick={() => setMobileMenuOpen(false)}
+                              className={cn(
+                                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                                'hover:bg-[var(--secondary)]',
+                                isActive && 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-md hover:bg-[var(--primary)]',
+                                !isActive && 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]',
+                              )}
+                            >
+                              <item.icon className={cn('w-4 h-4 shrink-0', isActive && 'text-[var(--primary-foreground)]')} />
+                              <span>{item.label}</span>
+                            </NavLink>
+                          )
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </div>
         </nav>
 
         <Separator />

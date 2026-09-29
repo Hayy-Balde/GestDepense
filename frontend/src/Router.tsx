@@ -17,13 +17,27 @@ const ExpensesPage      = React.lazy(() => import("./pages/ExpensesPage"));
 const IncomesPage       = React.lazy(() => import("./pages/IncomesPage"));
 const AccountsPage      = React.lazy(() => import("./pages/AccountsPage"));
 const CaissesPage       = React.lazy(() => import("./pages/CaissesPage"));
+const MouvementsPage    = React.lazy(() => import("./pages/MouvementsPage"));
+const MigrationPage     = React.lazy(() => import("./pages/MigrationPage"));
+const ReportsPage       = React.lazy(() => import("./pages/ReportsPage"));
 const SavingsPage       = React.lazy(() => import("./pages/SavingsPage"));
 const BudgetsPage       = React.lazy(() => import("./pages/BudgetsPage"));
 const SubscriptionsPage = React.lazy(() => import("./pages/SubscriptionsPage"));
 const DebtsPage         = React.lazy(() => import("./pages/DebtsPage"));
+const InvoicesPage      = React.lazy(() => import("./pages/InvoicesPage"));
 const AnalyticsPage     = React.lazy(() => import("./pages/AnalyticsPage"));
 const SettingsPage      = React.lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage      = React.lazy(() => import("./pages/NotFoundPage"));
+const ErrorPage         = React.lazy(() => import("./pages/ErrorPage"));
+
+// Config pages
+const AccountTypesPage    = React.lazy(() => import("./pages/config/AccountTypesPage"));
+const PaymentMethodsPage  = React.lazy(() => import("./pages/config/PaymentMethodsPage"));
+const BillingCyclesPage   = React.lazy(() => import("./pages/config/BillingCyclesPage"));
+const DebtTypesPage       = React.lazy(() => import("./pages/config/DebtTypesPage"));
+const CurrenciesPage      = React.lazy(() => import("./pages/config/CurrenciesPage"));
+const CategoriesPage      = React.lazy(() => import("./pages/config/CategoriesPage"));
+const ConfigIndexPage     = React.lazy(() => import("./pages/config/ConfigIndexPage"));
 
 const Fallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -32,8 +46,15 @@ const Fallback = () => (
 );
 
 const router = createBrowserRouter([
-  // Auth routes (publiques)
   {
+    errorElement: (
+      <React.Suspense fallback={<Fallback />}>
+        <ErrorPage />
+      </React.Suspense>
+    ),
+    children: [
+      // Auth routes (publiques)
+      {
     path: "/connexion",
     element: <React.Suspense fallback={<Fallback />}><LoginPage /></React.Suspense>,
   },
@@ -100,6 +121,18 @@ const router = createBrowserRouter([
         element: <React.Suspense fallback={<Fallback />}><CaissesPage /></React.Suspense>,
       },
       {
+        path: "mouvements",
+        element: <React.Suspense fallback={<Fallback />}><MouvementsPage /></React.Suspense>,
+      },
+      {
+        path: "migration",
+        element: <React.Suspense fallback={<Fallback />}><MigrationPage /></React.Suspense>,
+      },
+      {
+        path: "rapports",
+        element: <React.Suspense fallback={<Fallback />}><ReportsPage /></React.Suspense>,
+      },
+      {
         path: "epargnes",
         element: <React.Suspense fallback={<Fallback />}><SavingsPage /></React.Suspense>,
       },
@@ -117,12 +150,45 @@ const router = createBrowserRouter([
         element: <React.Suspense fallback={<Fallback />}><DebtsPage /></React.Suspense>,
       },
       {
+        path: "factures",
+        element: <React.Suspense fallback={<Fallback />}><InvoicesPage /></React.Suspense>,
+      },
+      {
         path: "analytiques",
         element: <React.Suspense fallback={<Fallback />}><AnalyticsPage /></React.Suspense>,
       },
       {
         path: "parametres",
         element: <React.Suspense fallback={<Fallback />}><SettingsPage /></React.Suspense>,
+      },
+      // Configuration
+      {
+        path: "configuration",
+        element: <React.Suspense fallback={<Fallback />}><ConfigIndexPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/types-de-comptes",
+        element: <React.Suspense fallback={<Fallback />}><AccountTypesPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/methodes-de-paiement",
+        element: <React.Suspense fallback={<Fallback />}><PaymentMethodsPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/cycles-de-facturation",
+        element: <React.Suspense fallback={<Fallback />}><BillingCyclesPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/types-de-dette",
+        element: <React.Suspense fallback={<Fallback />}><DebtTypesPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/devises",
+        element: <React.Suspense fallback={<Fallback />}><CurrenciesPage /></React.Suspense>,
+      },
+      {
+        path: "configuration/categories",
+        element: <React.Suspense fallback={<Fallback />}><CategoriesPage /></React.Suspense>,
       },
     ],
   },
@@ -131,6 +197,8 @@ const router = createBrowserRouter([
   {
     path: "*",
     element: <React.Suspense fallback={<Fallback />}><NotFoundPage /></React.Suspense>,
+  },
+    ],
   },
 ]);
 

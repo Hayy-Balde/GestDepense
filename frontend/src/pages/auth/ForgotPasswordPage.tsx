@@ -27,9 +27,10 @@ export default function ForgotPasswordPage() {
     try {
       await authService.forgotPassword(data);
       setSent(true);
-    } catch (err: any) {
-      const msg = err.response?.data?.message
-        || err.response?.data?.errors?.email?.[0]
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string; errors?: { email?: string[] } } } };
+      const msg = error.response?.data?.message
+        || error.response?.data?.errors?.email?.[0]
         || "Une erreur est survenue.";
       setServerError(msg);
     }

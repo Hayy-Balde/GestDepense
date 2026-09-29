@@ -22,8 +22,10 @@ export interface UserPreferences {
   theme: 'light' | 'dark' | 'system'
   compact_mode: boolean
   notifications_enabled: boolean
+  push_notifications: boolean
   weekly_report: boolean
   monthly_report: boolean
+  newsletter: boolean
 }
 
 export interface LoginRequest {

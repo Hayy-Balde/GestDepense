@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { expenseService, accountService, categoryService } from '../../services/api'
+import { expenseService, accountService, categoryService, api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 import { Account } from '../../types/account'
 import { Category } from '../../types/index'
+import type { Caisse } from '../../types'
+import { PAYMENT_METHODS, PAYMENT_METHOD_ICONS, PAYMENT_METHODS_BY_ACCOUNT_TYPE, DEFAULT_PAYMENT_METHODS } from '../../lib/constants'
+import { iconEmoji } from '../../lib/iconMap'
 import { AlertCircle, Check, Loader2 } from 'lucide-react'
+import { useToastStore } from '../../stores/toastStore'
 
 // Zod Validation Schema
 const expenseSchema = z.object({
@@ -18,10 +22,18 @@ const expenseSchema = z.object({
   currency_code: z.string().min(3).max(3).toUpperCase(),
   payment_method: z.enum(['cash', 'bank_transfer', 'mobile_money', 'credit_card', 'debit_card', 'check', 'other']),
   status: z.enum(['completed', 'pending', 'cancelled']),
-  description: z.string().optional()
+  description: z.string().optional(),
+  caisse_id: z.union([z.string().uuid('Caisse invalide'), z.literal('')]).optional().nullable(),
 })
 
-type ExpenseFormValues = z.infer<typeof expenseSchema>
+type ExpenseFormInput = z.input<typeof expenseSchema>
+type ExpenseFormValues = z.output<typeof expenseSchema>
+
+const PAYMENT_METHOD_OPTIONS = PAYMENT_METHODS.map((m) => ({
+  value: m.value,
+  label: m.label,
+  icon: PAYMENT_METHOD_ICONS[m.value] ?? '❓',
+}))
 
 interface ExpenseFormProps {
   onSuccess: () => void
@@ -31,19 +43,22 @@ interface ExpenseFormProps {
 export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
   const { user } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [caisses, setCaisses] = useState<Caisse[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [errorOptions, setErrorOptions] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const { success: toastSuccess, error: toastError } = useToastStore()
 
   const {
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors }
-  } = useForm<any>({
-    resolver: zodResolver(expenseSchema) as any,
+  } = useForm<ExpenseFormInput, undefined, ExpenseFormValues>({
+    resolver: zodResolver(expenseSchema),
     defaultValues: {
       title: '',
       amount: undefined,
@@ -53,19 +68,38 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
       currency_code: user?.currency_code || 'GNF',
       payment_method: 'credit_card',
       status: 'completed',
-      description: ''
+      description: '',
+      caisse_id: null,
     }
   })
 
-  // Load Accounts & Categories
+  const accountId = useWatch({ control, name: 'account_id' })
+  const paymentMethod = useWatch({ control, name: 'payment_method' })
+  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const accountType = selectedAccount?.type ?? 'bank'
+  const availablePaymentMethods = PAYMENT_METHOD_OPTIONS.filter((m) =>
+    (PAYMENT_METHODS_BY_ACCOUNT_TYPE[accountType] ?? DEFAULT_PAYMENT_METHODS).includes(m.value)
+  )
+  const firstAvailableMethod = availablePaymentMethods[0]
+
   useEffect(() => {
-    Promise.all([accountService.getAll(), categoryService.getAll()])
-      .then(([accountsRes, categoriesRes]) => {
+    if (firstAvailableMethod && !availablePaymentMethods.some((m) => m.value === paymentMethod)) {
+      setValue('payment_method', firstAvailableMethod.value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset payment method when account changes
+  }, [accountId])
+
+  // Load Accounts, Caisses & Categories
+  useEffect(() => {
+    Promise.all([accountService.getAll(), api.get('/caisses'), categoryService.getAll()])
+      .then(([accountsRes, caissesRes, categoriesRes]) => {
         const accs = accountsRes.data.data ? accountsRes.data.data : accountsRes.data
+        const caissesList = caissesRes.data.data ? caissesRes.data.data : caissesRes.data
         const cats = categoriesRes.data.data ? categoriesRes.data.data : categoriesRes.data
 
         setAccounts(accs)
-        
+        setCaisses(Array.isArray(caissesList) ? caissesList.filter((c: Caisse) => c.status !== 'closed') : [])
+
         // Filter only expense categories
         const expenseCats = cats.filter((c: Category) => c.type === 'expense')
         setCategories(expenseCats)
@@ -87,11 +121,15 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      await expenseService.create(data)
+      const res = await expenseService.create({ ...data, caisse_id: data.caisse_id || null })
+      toastSuccess((res.data as { message?: string })?.message || 'Dépense enregistrée avec succès.')
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error)
-      setSubmitError(error.response?.data?.message || 'Erreur lors de la création de la dépense.')
+      const err = error as { response?: { data?: { message?: string } } }
+      const msg = err.response?.data?.message || 'Erreur lors de la création de la dépense.'
+      setSubmitError(msg)
+      toastError(msg)
     } finally {
       setIsSubmitting(false)
     }
@@ -173,7 +211,13 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
         <div className="space-y-1.5">
           <label className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Compte</label>
           <select
-            {...register('account_id')}
+            {...register('account_id', {
+              onChange: () => {
+                if (firstAvailableMethod) {
+                  setValue('payment_method', firstAvailableMethod.value)
+                }
+              },
+            })}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all"
           >
             {accounts.map(acc => (
@@ -194,11 +238,31 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
           >
             {categories.map(cat => (
               <option key={cat.id} value={cat.id}>
-                {cat.icon} {cat.name}
+                {iconEmoji(cat.icon)} {cat.name}
               </option>
             ))}
           </select>
           {errors.category_id && <p className="text-xs text-red-500 font-medium">{errors.category_id.message?.toString()}</p>}
+        </div>
+
+        {/* Caisse (optional) */}
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Caisse (optionnel)</label>
+          <select
+            {...register('caisse_id')}
+            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all"
+          >
+            <option value="">— Aucune —</option>
+            {caisses.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.icon || '🎯'} {c.name} (restant : {Number(c.remaining).toLocaleString()} )
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Si une caisse est choisie, la dépense sera débitée de la caisse (et non du compte).
+          </p>
+          {errors.caisse_id && <p className="text-xs text-red-500 font-medium">{errors.caisse_id.message?.toString()}</p>}
         </div>
 
         {/* Payment Method */}
@@ -208,13 +272,11 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
             {...register('payment_method')}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all"
           >
-            <option value="credit_card">💳 Carte de crédit</option>
-            <option value="debit_card">💳 Carte de débit</option>
-            <option value="cash">💵 Espèces</option>
-            <option value="bank_transfer">🏦 Virement bancaire</option>
-            <option value="mobile_money">📱 Mobile money</option>
-            <option value="check">✍️ Chèque</option>
-            <option value="other">❓ Autre</option>
+            {availablePaymentMethods.map((method) => (
+              <option key={method.value} value={method.value}>
+                {method.icon} {method.label}
+              </option>
+            ))}
           </select>
           {errors.payment_method && <p className="text-xs text-red-500 font-medium">{errors.payment_method.message?.toString()}</p>}
         </div>

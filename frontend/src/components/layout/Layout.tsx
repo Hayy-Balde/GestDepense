@@ -27,7 +27,7 @@ export default function Layout() {
     <div className="flex h-screen bg-gray-100">
       <div className="w-64 bg-white shadow-md flex flex-col">
         <div className="p-4 border-b">
-          <h1 className="text-xl font-bold text-indigo-600">GestDepense</h1>
+          <h1 className="text-xl font-bold text-indigo-600">Fin-Track</h1>
         </div>
         <nav className="p-4 space-y-1 flex-1">
           {navItems.map((item) => (

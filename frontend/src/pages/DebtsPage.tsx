@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format, parseISO, differenceInDays, isPast, isFuture } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { api } from '../services/api'
 import type { Debt, DebtFormData, DebtPayment, DebtType, DebtStatus } from '../types'
+import type { Account } from '../types/account'
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,11 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
-import { DEBT_TYPES, CURRENCIES } from '../lib/constants'
+import { useConfig } from '../hooks/useConfig'
 
 type TabType = 'lent' | 'borrowed'
 
@@ -42,12 +45,14 @@ interface PaymentFormData {
   amount: number
   date: string
   note?: string
+  account_id: string
 }
 
 const MOCK_LENT: Debt[] = [
   {
     id: 'mock-lent-1',
     user_id: 'mock',
+    account_id: null,
     type: 'lent',
     person_name: 'Jean Camara',
     person_contact: '+224 621 11 22 33',
@@ -68,6 +73,7 @@ const MOCK_LENT: Debt[] = [
   {
     id: 'mock-lent-2',
     user_id: 'mock',
+    account_id: null,
     type: 'lent',
     person_name: 'Marie Diallo',
     person_contact: null,
@@ -87,6 +93,7 @@ const MOCK_LENT: Debt[] = [
   {
     id: 'mock-lent-3',
     user_id: 'mock',
+    account_id: null,
     type: 'lent',
     person_name: 'Amadou Bah',
     person_contact: '+224 622 33 44 55',
@@ -107,6 +114,7 @@ const MOCK_BORROWED: Debt[] = [
   {
     id: 'mock-borrowed-1',
     user_id: 'mock',
+    account_id: null,
     type: 'borrowed',
     person_name: 'Prêt Bancaire',
     person_contact: 'Banque Populaire',
@@ -128,6 +136,7 @@ const MOCK_BORROWED: Debt[] = [
   {
     id: 'mock-borrowed-2',
     user_id: 'mock',
+    account_id: null,
     type: 'borrowed',
     person_name: 'Maman',
     person_contact: null,
@@ -188,17 +197,26 @@ function getDaysUntilDue(dateStr: string): number {
 
 export default function DebtsPage() {
   const { user } = useAuthStore()
+  const { debtTypes, currencies } = useConfig()
   const currency = user?.currency_code || 'GNF'
 
   const [activeTab, setActiveTab] = useState<TabType>('lent')
   const [debts, setDebts] = useState<Debt[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null)
+  const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
   const [showPayments, setShowPayments] = useState<Set<string>>(new Set())
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
+
+  const deletingDebt = debts.find((d) => d.id === confirmDeleteId)
 
   const createForm = useForm<DebtFormData>({
     defaultValues: {
@@ -209,22 +227,21 @@ export default function DebtsPage() {
       currency_code: currency,
       due_date: '',
       description: '',
+      account_id: '',
     },
   })
+  const createType = useWatch({ control: createForm.control, name: 'type' })
 
   const paymentForm = useForm<PaymentFormData>({
     defaultValues: {
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
+      account_id: '',
     },
   })
 
   const filteredDebts = debts.filter((d) => d.type === activeTab)
-
-  useEffect(() => {
-    fetchDebts()
-  }, [])
 
   function fetchDebts() {
     setLoading(true)
@@ -241,7 +258,72 @@ export default function DebtsPage() {
       .finally(() => setLoading(false))
   }
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
+    fetchDebts()
+    api
+      .get('/accounts')
+      .then((res) => {
+        const list = res.data?.data || res.data || []
+        setAccounts(Array.isArray(list) ? list : [])
+      })
+      .catch(() => setAccounts([]))
+  }, [])
+
   function handleCreate(data: DebtFormData) {
+    if (!data.account_id) {
+      setError('Veuillez sélectionner un compte source.')
+      return
+    }
+
+    const closeDialog = () => {
+      setShowCreateDialog(false)
+      setEditingDebt(null)
+      createForm.reset({
+        type: 'lent',
+        person_name: '',
+        person_contact: '',
+        amount: 0,
+        currency_code: currency,
+        due_date: '',
+        description: '',
+        account_id: accounts[0]?.id ?? '',
+      })
+    }
+
+    if (editingDebt) {
+      api
+        .put(`/debts/${editingDebt.id}`, data)
+        .then((res) => {
+          const updated = res.data?.data || res.data
+          setDebts((prev) =>
+            prev.map((d) => (d.id === editingDebt.id ? (updated || d) : d))
+          )
+          closeDialog()
+        })
+        .catch(() => {
+          setDebts((prev) =>
+            prev.map((d) =>
+              d.id === editingDebt.id
+                ? {
+                    ...d,
+                    type: data.type,
+                    person_name: data.person_name,
+                    person_contact: data.person_contact || d.person_contact,
+                    amount: data.amount,
+                    due_date: data.due_date || d.due_date,
+                    description: data.description || d.description,
+                    account_id: data.account_id,
+                  }
+                : d
+            )
+          )
+          closeDialog()
+          setError('Impossible de modifier la dette sur le serveur — modifiée localement.')
+        })
+      return
+    }
+
     api
       .post('/debts', data)
       .then((res) => {
@@ -249,22 +331,14 @@ export default function DebtsPage() {
         if (created) {
           setDebts((prev) => [...prev, created])
         }
-        setShowCreateDialog(false)
-        createForm.reset({
-          type: 'lent',
-          person_name: '',
-          person_contact: '',
-          amount: 0,
-          currency_code: currency,
-          due_date: '',
-          description: '',
-        })
+        closeDialog()
       })
       .catch(() => {
         const mockId = 'mock-' + Date.now()
         const newDebt: Debt = {
           id: mockId,
           user_id: 'mock',
+          account_id: null,
           type: data.type,
           person_name: data.person_name,
           person_contact: data.person_contact || null,
@@ -280,52 +354,70 @@ export default function DebtsPage() {
           payments: [],
         }
         setDebts((prev) => [...prev, newDebt])
-        setShowCreateDialog(false)
-        createForm.reset({
-          type: 'lent',
-          person_name: '',
-          person_contact: '',
-          amount: 0,
-          currency_code: currency,
-          due_date: '',
-          description: '',
-        })
+        closeDialog()
         setError('Impossible de créer la dette sur le serveur — donnée enregistrée localement.')
       })
   }
 
-  function handleDelete(id: string) {
-    api
-      .delete(`/debts/${id}`)
-      .then(() => {
-        setDebts((prev) => prev.filter((d) => d.id !== id))
-      })
-      .catch(() => {
-        setDebts((prev) => prev.filter((d) => d.id !== id))
-        setError('Impossible de supprimer la dette sur le serveur — donnée supprimée localement.')
-      })
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      const res = await api.delete(`/debts/${id}`)
+      success((res.data as { message?: string })?.message || 'Dette supprimée avec succès.')
+      setConfirmDeleteId(null)
+      setDebts((prev) => prev.filter((d) => d.id !== id))
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Impossible de supprimer la dette sur le serveur.'))
+      setConfirmDeleteId(null)
+      setDebts((prev) => prev.filter((d) => d.id !== id))
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  function openEdit(debt: Debt) {
+    setEditingDebt(debt)
+    createForm.reset({
+      type: debt.type,
+      person_name: debt.person_name,
+      person_contact: debt.person_contact || '',
+      amount: Number(debt.amount),
+      currency_code: debt.currency_code || currency,
+      due_date: debt.due_date || '',
+      description: debt.description || '',
+      account_id: debt.account_id || '',
+    })
+    setShowCreateDialog(true)
   }
 
   function openPaymentDialog(debt: Debt) {
     setSelectedDebt(debt)
+    setPaymentError(null)
     paymentForm.reset({
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
+      account_id: accounts[0]?.id ?? '',
     })
     setShowPaymentDialog(true)
   }
 
   function handleAddPayment(data: PaymentFormData) {
     if (!selectedDebt) return
+    setPaymentError(null)
+    if (!data.account_id) {
+      setPaymentError('Veuillez sélectionner un compte pour le remboursement.')
+      return
+    }
     api
       .post(`/debts/${selectedDebt.id}/payments`, data)
       .then((res) => {
         const payment = res.data?.data || res.data
+        success((res.data as { message?: string })?.message || 'Paiement enregistré avec succès.')
         setDebts((prev) =>
           prev.map((d) => {
             if (d.id !== selectedDebt.id) return d
-            const paidTotal = (d.payments || []).reduce((s, p) => s + p.amount, 0) + data.amount
+            const paidTotal = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0) + data.amount
             const remaining = Math.max(0, d.amount - paidTotal)
             const progress = d.amount > 0 ? Math.round(((d.amount - remaining) / d.amount) * 100) : 0
             let status: DebtStatus = d.status
@@ -344,13 +436,26 @@ export default function DebtsPage() {
         setShowPaymentDialog(false)
         setSelectedDebt(null)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        const error = err as { response?: { status?: number; data?: { message?: string; errors?: Record<string, string[]> } } }
+        const apiMessage = error.response?.data?.message
+        const firstFieldError = error.response?.data?.errors
+          ? Object.values(error.response.data.errors)[0]?.[0]
+          : undefined
+        const message = apiMessage || firstFieldError
+
+        if (message) {
+          setPaymentError(message)
+          toastError(message)
+          return
+        }
+
         if (!selectedDebt) return
-        const payment: DebtPayment = { id: 'mock-pay-' + Date.now(), debt_id: selectedDebt.id, amount: data.amount, date: data.date, note: data.note || null }
+        const payment: DebtPayment = { id: 'mock-pay-' + Date.now(), debt_id: selectedDebt.id, amount: data.amount, date: data.date, note: data.note || null, account_id: data.account_id }
         setDebts((prev) =>
           prev.map((d) => {
             if (d.id !== selectedDebt.id) return d
-            const paidTotal = (d.payments || []).reduce((s, p) => s + p.amount, 0) + data.amount
+            const paidTotal = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0) + data.amount
             const remaining = Math.max(0, d.amount - paidTotal)
             const progress = d.amount > 0 ? Math.round(((d.amount - remaining) / d.amount) * 100) : 0
             let status: DebtStatus = d.status
@@ -382,9 +487,9 @@ export default function DebtsPage() {
   }
 
   const summary = {
-    total: filteredDebts.reduce((s, d) => s + d.amount, 0),
-    remaining: filteredDebts.reduce((s, d) => s + d.remaining_amount, 0),
-    repaid: filteredDebts.reduce((s, d) => s + (d.amount - d.remaining_amount), 0),
+    total: filteredDebts.reduce((s, d) => s + Number(d.amount), 0),
+    remaining: filteredDebts.reduce((s, d) => s + Number(d.remaining_amount), 0),
+    repaid: filteredDebts.reduce((s, d) => s + (Number(d.amount) - Number(d.remaining_amount)), 0),
     active: filteredDebts.filter((d) => d.status !== 'paid').length,
   }
 
@@ -416,7 +521,7 @@ export default function DebtsPage() {
       )}
 
       <div className="flex space-x-1 rounded-xl bg-[var(--muted)]/30 p-1 w-fit">
-        {DEBT_TYPES.map((tab) => (
+        {debtTypes.map((tab) => (
           <button
             key={tab.value}
             onClick={() => setActiveTab(tab.value as TabType)}
@@ -516,6 +621,11 @@ export default function DebtsPage() {
                           <CardTitle className="text-base">{debt.person_name}</CardTitle>
                           {debt.person_contact && (
                             <CardDescription className="mt-0.5">{debt.person_contact}</CardDescription>
+                          )}
+                          {debt.account && (
+                            <CardDescription className="mt-0.5 text-xs">
+                              Compte : {debt.account.name}
+                            </CardDescription>
                           )}
                         </div>
                       </div>
@@ -636,6 +746,7 @@ export default function DebtsPage() {
                           variant="ghost"
                           size="icon-sm"
                           className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                          onClick={() => openEdit(debt)}
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
@@ -643,9 +754,14 @@ export default function DebtsPage() {
                           variant="ghost"
                           size="icon-sm"
                           className="text-red-400 hover:text-red-600"
-                          onClick={() => handleDelete(debt.id)}
+                          onClick={() => setConfirmDeleteId(debt.id)}
+                          disabled={deletingId === debt.id}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {deletingId === debt.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -660,8 +776,14 @@ export default function DebtsPage() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Nouvelle Dette</DialogTitle>
-            <DialogDescription>Enregistrez l'argent que vous prêtez ou empruntez.</DialogDescription>
+            <DialogTitle className="text-xl font-bold">
+              {editingDebt ? 'Modifier la dette' : 'Nouvelle Dette'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingDebt
+                ? `Modifiez les informations de la dette de ${editingDebt.person_name}.`
+                : "Enregistrez l'argent que vous prêtez ou empruntez."}
+            </DialogDescription>
           </DialogHeader>
           <form
             onSubmit={createForm.handleSubmit(handleCreate)}
@@ -670,14 +792,14 @@ export default function DebtsPage() {
             <div>
               <Label>Type</Label>
               <div className="flex space-x-2 mt-1.5">
-                {DEBT_TYPES.map((t) => (
+                {debtTypes.map((t) => (
                   <button
                     key={t.value}
                     type="button"
                     onClick={() => createForm.setValue('type', t.value as DebtType)}
                     className={cn(
                       'flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-all',
-                      createForm.watch('type') === t.value
+                      createType === t.value
                         ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600'
                         : 'border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--foreground)]'
                     )}
@@ -722,13 +844,32 @@ export default function DebtsPage() {
                   {...createForm.register('currency_code')}
                   className="flex h-10 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {CURRENCIES.map((c) => (
+                  {currencies.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.code} — {c.name}
                     </option>
                   ))}
                 </select>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="account_id">
+                {createType === 'lent'
+                  ? 'Compte source — d\'où part l\'argent *'
+                  : 'Compte de réception — où arrive l\'argent *'}
+              </Label>
+              <select
+                id="account_id"
+                {...createForm.register('account_id', { required: true })}
+                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">-- Choisir un compte --</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.currency_code})
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="due_date">Date d'échéance</Label>
@@ -752,7 +893,7 @@ export default function DebtsPage() {
                 Annuler
               </Button>
               <Button type="submit" variant="primary" className="bg-indigo-600 text-white hover:bg-indigo-700">
-                Créer
+                {editingDebt ? 'Enregistrer' : 'Créer'}
               </Button>
             </div>
           </form>
@@ -775,6 +916,12 @@ export default function DebtsPage() {
             onSubmit={paymentForm.handleSubmit(handleAddPayment)}
             className="space-y-4 mt-2"
           >
+            {paymentError && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 flex items-start space-x-2 text-red-600 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-sm">{paymentError}</p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="payment-amount">Montant *</Label>
               <Input
@@ -793,6 +940,28 @@ export default function DebtsPage() {
                 type="date"
                 {...paymentForm.register('date', { required: true })}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="payment-account">
+                {selectedDebt?.type === 'lent'
+                  ? 'Compte de remboursement — où l\'argent part *'
+                  : 'Compte de remboursement — d\'où l\'argent quitte *'}
+              </Label>
+              <select
+                id="payment-account"
+                {...paymentForm.register('account_id', { required: true })}
+                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">-- Choisir un compte --</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.currency_code})
+                  </option>
+                ))}
+              </select>
+              {paymentForm.formState.errors.account_id && (
+                <p className="text-xs text-red-500 font-medium">Veuillez sélectionner un compte.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="payment-note">Note</Label>
@@ -814,6 +983,21 @@ export default function DebtsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+        title="Supprimer cette dette ?"
+        description={
+          deletingDebt
+            ? `La dette « ${deletingDebt.person_name} » sera définitivement supprimée ainsi que ses paiements.`
+            : undefined
+        }
+        loading={deletingId === confirmDeleteId}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+      />
     </div>
   )
 }

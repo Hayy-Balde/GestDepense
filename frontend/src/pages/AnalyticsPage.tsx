@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BarChart3, TrendingUp, TrendingDown, PieChart, Calendar, Download, RefreshCw } from 'lucide-react'
 import {
@@ -7,57 +8,18 @@ import {
   AreaChart, Area,
 } from 'recharts'
 import { api } from '@/services/api'
-import type { TrendData, CategoryBreakdown, MonthlySummary } from '@/types'
+import type { TrendData, CategoryBreakdown } from '@/types'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
-import { MONTHS, CHART_COLORS } from '@/lib/constants'
-
-const mockTrends: TrendData[] = [
-  { month: 'Jan', incomes: 3200000, expenses: 2100000, savings: 1100000 },
-  { month: 'Fév', incomes: 3100000, expenses: 1950000, savings: 1150000 },
-  { month: 'Mar', incomes: 3500000, expenses: 2400000, savings: 1100000 },
-  { month: 'Avr', incomes: 3300000, expenses: 1800000, savings: 1500000 },
-  { month: 'Mai', incomes: 3800000, expenses: 2200000, savings: 1600000 },
-  { month: 'Juin', incomes: 3400000, expenses: 2100000, savings: 1300000 },
-]
-
-const mockExpenseBreakdown: CategoryBreakdown[] = [
-  { category: 'Alimentation', amount: 850000, percentage: 28, color: '#F97316', icon: 'Utensils', count: 85 },
-  { category: 'Transport', amount: 450000, percentage: 15, color: '#3B82F6', icon: 'Car', count: 45 },
-  { category: 'Logement', amount: 600000, percentage: 20, color: '#8B5CF6', icon: 'Home', count: 12 },
-  { category: 'Loisirs', amount: 350000, percentage: 12, color: '#EC4899', icon: 'Gamepad2', count: 35 },
-  { category: 'Santé', amount: 200000, percentage: 7, color: '#EF4444', icon: 'Heart', count: 8 },
-  { category: 'Shopping', amount: 300000, percentage: 10, color: '#A855F7', icon: 'ShoppingBag', count: 30 },
-  { category: 'Éducation', amount: 150000, percentage: 5, color: '#06B6D4', icon: 'GraduationCap', count: 6 },
-  { category: 'Autre', amount: 100000, percentage: 3, color: '#6B7280', icon: 'MoreHorizontal', count: 10 },
-]
-
-const mockIncomeBreakdown: CategoryBreakdown[] = [
-  { category: 'Salaire', amount: 2500000, percentage: 68, color: '#16A34A', icon: 'Briefcase', count: 6 },
-  { category: 'Freelance', amount: 700000, percentage: 19, color: '#0EA5E9', icon: 'Laptop', count: 12 },
-  { category: 'Business', amount: 300000, percentage: 8, color: '#4F46E5', icon: 'Building2', count: 3 },
-  { category: 'Investissement', amount: 100000, percentage: 3, color: '#8B5CF6', icon: 'TrendingUp', count: 4 },
-  { category: 'Autre', amount: 100000, percentage: 2, color: '#6B7280', icon: 'MoreHorizontal', count: 5 },
-]
-
-const mockMonthlyData: MonthlySummary[] = mockTrends.map((t, i) => ({
-  month: i + 1,
-  year: 2026,
-  incomes: t.incomes,
-  expenses: t.expenses,
-  savings: t.savings,
-  surplus: t.incomes - t.expenses,
-  top_categories: [],
-  daily_spending: [],
-}))
+import { CHART_COLORS } from '@/lib/constants'
 
 const periods = [
   { label: '7 jours', value: '7d' },
   { label: '30 jours', value: '30d' },
   { label: '3 mois', value: '90d' },
+  { label: '6 mois', value: '6m' },
   { label: '12 mois', value: '365d' },
 ]
 
@@ -116,17 +78,17 @@ const ChartSkeleton = () => (
 )
 
 export default function AnalyticsPage() {
+  const navigate = useNavigate()
   const currency = useAuthStore((s) => s.user?.currency_code ?? 'GNF')
   const locFormatCurrency = (amount: number) =>
     new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(amount ?? 0)
 
-  const [period, setPeriod] = useState('30d')
+  const [period, setPeriod] = useState('6m')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [trends, setTrends] = useState<TrendData[]>([])
   const [expenseBreakdown, setExpenseBreakdown] = useState<CategoryBreakdown[]>([])
   const [incomeBreakdown, setIncomeBreakdown] = useState<CategoryBreakdown[]>([])
-  const [monthly, setMonthly] = useState<MonthlySummary[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -134,25 +96,22 @@ export default function AnalyticsPage() {
       setLoading(true)
       setError(null)
       try {
-        const [tr, ex, inc, mon] = await Promise.all([
+        const [tr, ex, inc] = await Promise.all([
           api.get<{ data: TrendData[] }>('/analytics/trends', { params: { period } }),
           api.get<{ data: CategoryBreakdown[] }>('/analytics/breakdown', { params: { type: 'expense' } }),
           api.get<{ data: CategoryBreakdown[] }>('/analytics/breakdown', { params: { type: 'income' } }),
-          api.get<{ data: MonthlySummary[] }>('/analytics/monthly'),
         ])
         if (!cancelled) {
           setTrends(tr.data.data)
           setExpenseBreakdown(ex.data.data)
           setIncomeBreakdown(inc.data.data)
-          setMonthly(mon.data.data)
         }
       } catch {
         if (!cancelled) {
-          setTrends(mockTrends)
-          setExpenseBreakdown(mockExpenseBreakdown)
-          setIncomeBreakdown(mockIncomeBreakdown)
-          setMonthly(mockMonthlyData)
-          setError('Impossible de charger les données. Affichage des données de démonstration.')
+          setTrends([])
+          setExpenseBreakdown([])
+          setIncomeBreakdown([])
+          setError('Impossible de charger les données analytiques.')
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -163,29 +122,23 @@ export default function AnalyticsPage() {
   }, [period])
 
   const avgIncome = trends.length > 0
-    ? trends.reduce((s, t) => s + t.incomes, 0) / trends.length
+    ? trends.reduce((s, t) => s + Number(t.incomes), 0) / trends.length
+    : 0,
+  avgExpense = trends.length > 0
+    ? trends.reduce((s, t) => s + Number(t.expenses), 0) / trends.length
     : 0
-  const avgExpense = trends.length > 0
-    ? trends.reduce((s, t) => s + t.expenses, 0) / trends.length
-    : 0
-  const totalIncomes = trends.reduce((s, t) => s + t.incomes, 0)
-  const totalSavings = trends.reduce((s, t) => s + t.savings, 0)
+  const totalIncomes = trends.reduce((s, t) => s + Number(t.incomes), 0)
+  const totalExpenses = trends.reduce((s, t) => s + Number(t.expenses), 0)
+  const totalSavings = trends.reduce((s, t) => s + Number(t.savings), 0)
   const savingsRate = totalIncomes > 0 ? (totalSavings / totalIncomes) * 100 : 0
   const bestMonth = trends.length > 0
     ? trends.reduce((best, t) => t.savings > best.savings ? t : best, trends[0]!)
     : null
 
-  const balanceData = trends.length > 0
-    ? trends.map((t) => ({
-        month: t.month,
-        surplus: t.incomes - t.expenses,
-      }))
-    : monthly.length > 0
-      ? monthly.map((m) => ({
-          month: MONTHS[m.month - 1]?.substring(0, 3) ?? `M${m.month}`,
-          surplus: m.surplus,
-        }))
-      : []
+  const balanceData = trends.map((t) => ({
+    month: t.month,
+    surplus: t.incomes - t.expenses,
+  }))
 
   const topExpenses = [...expenseBreakdown].sort((a, b) => b.amount - a.amount).slice(0, 5)
 
@@ -207,7 +160,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon-sm" aria-label="Télécharger">
+          <Button variant="ghost" size="icon-sm" aria-label="Télécharger" onClick={() => navigate('/rapports')} title="Générer un rapport">
             <Download className="w-4 h-4" />
           </Button>
           <Button
@@ -502,8 +455,8 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Évolution de l'Épargne</CardTitle>
-            <CardDescription>Croissance de l'épargne sur la période</CardDescription>
+            <CardTitle>Épargne & Résultat Net</CardTitle>
+            <CardDescription>Excédent (revenus - dépenses) par période</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -523,7 +476,7 @@ export default function AnalyticsPage() {
                   <XAxis dataKey="month" stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} />
                   <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${(v / 1000000).toFixed(1)}M`} />
                   <Tooltip content={<ChartTooltipContent />} />
-                  <Area type="monotone" dataKey="savings" name="Épargne" stroke="#8B5CF6" fill="url(#savingsGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="savings" name="Résultat net" stroke="#8B5CF6" fill="url(#savingsGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             )}

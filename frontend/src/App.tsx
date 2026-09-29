@@ -1,20 +1,22 @@
 import { useEffect } from 'react';
 import AppRouter from './Router';
 import { useAuthStore } from './stores/authStore';
-import { authService } from './services/auth';
+import { useConfigStore } from './stores/configStore';
 
 function App() {
-  const { init, setAuth, setUser, logout, isAuthenticated } = useAuthStore();
+  const init = useAuthStore((s) => s.init);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const loadConfig = useConfigStore((s) => s.loadConfig);
+  const configLoaded = useConfigStore((s) => s.loaded);
 
   useEffect(() => {
     init();
+  }, [init]);
 
-    if (isAuthenticated) {
-      authService.getUser()
-        .then((user) => setUser(user))
-        .catch(() => logout());
-    }
-  }, []);
+  useEffect(() => {
+    if (!isAuthenticated || configLoaded) return;
+    loadConfig();
+  }, [isAuthenticated, configLoaded, loadConfig]);
 
   return (
     <div className="App min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans">

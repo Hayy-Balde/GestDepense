@@ -19,7 +19,10 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Separator } from "../components/ui/separator"
 import { cn, getInitials } from "../lib/utils"
-import { CURRENCIES } from "../lib/constants"
+import { useConfig } from "../hooks/useConfig"
+import { QrCode as QrCodeImage } from "../components/QrCode"
+import { ConfirmDialog } from "../components/ui/confirm-dialog"
+import { useToastStore, getApiErrorMessage } from "../stores/toastStore"
 
 const strengthConfig = [
   { label: "Faible", color: "bg-red-500", min: 0, scoreLabel: "Sécurité : Faible" },
@@ -64,8 +67,60 @@ interface Session {
   is_current: boolean
 }
 
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string
+      errors?: {
+        current_password?: string[]
+        code?: string[]
+      }
+    }
+  }
+}
+
+interface FeedbackData {
+  type: "success" | "error"
+  message: string
+}
+
+const feedbackColors = (type: "success" | "error") =>
+  type === "success"
+    ? "bg-green-500/10 border-green-500/20 text-green-600"
+    : "bg-red-500/10 border-red-500/20 text-red-600"
+
+function Feedback({ feedback }: { feedback: FeedbackData | null }) {
+  if (!feedback) return null
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn("flex items-center gap-2 p-3 rounded-lg text-sm border", feedbackColors(feedback.type))}
+    >
+      {feedback.type === "success" ? <Check className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+      <span>{feedback.message}</span>
+    </motion.div>
+  )
+}
+
+function SwitchField({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <Label>{label}</Label>
+      <Switch.Root
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        className="relative w-11 h-6 rounded-full bg-[var(--secondary)] data-[state=checked]:bg-[var(--primary)] transition-colors outline-none cursor-pointer"
+      >
+        <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow-sm translate-x-0.5 data-[state=checked]:translate-x-[22px] transition-transform" />
+      </Switch.Root>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const { user, setUser, logout } = useAuthStore()
+  const { currencies } = useConfig()
 
   const [profileName, setProfileName] = useState(user?.name || "")
   const [profilePhone, setProfilePhone] = useState(user?.phone || "")
@@ -89,13 +144,13 @@ export default function SettingsPage() {
   const [notifFeedback, setNotifFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const notifDefaults = user?.preferences ?? {
-    notifications_enabled: true, weekly_report: false, monthly_report: true,
+    notifications_enabled: true, push_notifications: true, weekly_report: false, monthly_report: true, newsletter: false,
   }
   const [emailNotifications, setEmailNotifications] = useState(notifDefaults.notifications_enabled ?? true)
-  const [pushNotifications, setPushNotifications] = useState(true)
-  const [budgetAlerts, setBudgetAlerts] = useState(true)
-  const [paymentReminders, setPaymentReminders] = useState(false)
-  const [newsletter, setNewsletter] = useState(false)
+  const [pushNotifications, setPushNotifications] = useState(notifDefaults.push_notifications ?? true)
+  const [budgetAlerts, setBudgetAlerts] = useState(notifDefaults.weekly_report ?? true)
+  const [paymentReminders, setPaymentReminders] = useState(notifDefaults.monthly_report ?? false)
+  const [newsletter, setNewsletter] = useState(notifDefaults.newsletter ?? false)
 
   const [showCurrentPw, setShowCurrentPw] = useState(false)
   const [showNewPw, setShowNewPw] = useState(false)
@@ -114,6 +169,8 @@ export default function SettingsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(true)
   const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [revokeSessionId, setRevokeSessionId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
 
   // 2FA
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
@@ -126,11 +183,6 @@ export default function SettingsPage() {
   const [twoFactorFeedback, setTwoFactorFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [showRecoveryCodes, setShowRecoveryCodes] = useState(false)
-
-  useEffect(() => {
-    loadSessions()
-    load2FAStatus()
-  }, [])
 
   const loadSessions = async () => {
     try {
@@ -154,15 +206,26 @@ export default function SettingsPage() {
     }
   }
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
+    loadSessions()
+    load2FAStatus()
+  }, [])
+
   const handleProfileSubmit = async () => {
     setProfileSaving(true)
     setProfileFeedback(null)
     try {
       const res = await api.put("/auth/profile", { name: profileName, phone: profilePhone })
       setUser(res.data.user)
-      setProfileFeedback({ type: "success", message: "Profil mis à jour avec succès." })
-    } catch (err: any) {
-      setProfileFeedback({ type: "error", message: err.response?.data?.message || "Erreur lors de la mise à jour." })
+      const msg = "Profil mis à jour avec succès."
+      setProfileFeedback({ type: "success", message: msg })
+      success(msg)
+    } catch (err: unknown) {
+      const error = err as ApiErrorShape
+      const msg = error.response?.data?.message || "Erreur lors de la mise à jour."
+      setProfileFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setProfileSaving(false)
     }
@@ -176,9 +239,13 @@ export default function SettingsPage() {
         currency_code: currencyCode, timezone, locale,
       })
       setUser(res.data.user)
-      setPrefFeedback({ type: "success", message: "Préférences enregistrées." })
-    } catch {
-      setPrefFeedback({ type: "error", message: "Erreur lors de l'enregistrement." })
+      const msg = "Préférences enregistrées."
+      setPrefFeedback({ type: "success", message: msg })
+      success(msg)
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Erreur lors de l'enregistrement.")
+      setPrefFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setPrefSaving(false)
     }
@@ -207,14 +274,20 @@ export default function SettingsPage() {
       const res = await api.put("/auth/preferences", {
         preferences: {
           notifications_enabled: emailNotifications,
+          push_notifications: pushNotifications,
           weekly_report: budgetAlerts,
           monthly_report: paymentReminders,
+          newsletter,
         },
       })
       if (res.data.user) setUser(res.data.user)
-      setNotifFeedback({ type: "success", message: "Notifications mises à jour." })
-    } catch {
-      setNotifFeedback({ type: "error", message: "Erreur lors de la mise à jour." })
+      const msg = "Notifications mises à jour."
+      setNotifFeedback({ type: "success", message: msg })
+      success(msg)
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Erreur lors de la mise à jour.")
+      setNotifFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setNotifSaving(false)
     }
@@ -222,7 +295,9 @@ export default function SettingsPage() {
 
   const handlePasswordSubmit = async () => {
     if (newPassword !== confirmPassword) {
-      setPwFeedback({ type: "error", message: "Les mots de passe ne correspondent pas." })
+      const msg = "Les mots de passe ne correspondent pas."
+      setPwFeedback({ type: "error", message: msg })
+      toastError(msg)
       return
     }
     setPwSaving(true)
@@ -233,13 +308,17 @@ export default function SettingsPage() {
         new_password: newPassword,
         new_password_confirmation: confirmPassword,
       })
-      setPwFeedback({ type: "success", message: "Mot de passe mis à jour avec succès." })
+      const msg = "Mot de passe mis à jour avec succès."
+      setPwFeedback({ type: "success", message: msg })
+      success(msg)
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
-    } catch (err: any) {
-      const msg = err.response?.data?.errors?.current_password?.[0] || "Erreur. Vérifiez votre mot de passe actuel."
+    } catch (err: unknown) {
+      const error = err as ApiErrorShape
+      const msg = error.response?.data?.errors?.current_password?.[0] || "Erreur. Vérifiez votre mot de passe actuel."
       setPwFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setPwSaving(false)
     }
@@ -291,10 +370,13 @@ export default function SettingsPage() {
   const handleRevokeSession = async (id: string) => {
     setRevokingId(id)
     try {
-      await api.delete(`/auth/sessions/${id}`)
+      const res = await api.delete(`/auth/sessions/${id}`)
+      success((res.data as { message?: string })?.message || "Session révoquée avec succès.")
+      setRevokeSessionId(null)
       setSessions((prev) => prev.filter((s) => s.id !== id))
-    } catch {
-      // ignore
+    } catch (err) {
+      toastError(getApiErrorMessage(err, "Erreur lors de la révocation de la session."))
+      setRevokeSessionId(null)
     } finally {
       setRevokingId(null)
     }
@@ -307,8 +389,11 @@ export default function SettingsPage() {
       setQrCodeUri(res.data.qr_code_uri)
       setTwoFactorSecret(res.data.secret)
       setTwoFactorCode("")
-    } catch (err: any) {
-      setTwoFactorFeedback({ type: "error", message: err.response?.data?.message || "Erreur." })
+    } catch (err: unknown) {
+      const error = err as ApiErrorShape
+      const msg = error.response?.data?.message || "Erreur."
+      setTwoFactorFeedback({ type: "error", message: msg })
+      toastError(msg)
     }
   }
 
@@ -320,10 +405,14 @@ export default function SettingsPage() {
       setRecoveryCodes(res.data.recovery_codes)
       setTwoFactorEnabled(true)
       setShowRecoveryCodes(true)
-      setTwoFactorFeedback({ type: "success", message: "2FA activée avec succès !" })
-    } catch (err: any) {
-      const msg = err.response?.data?.errors?.code?.[0] || err.response?.data?.message || "Code invalide."
+      const msg = "2FA activée avec succès !"
+      setTwoFactorFeedback({ type: "success", message: msg })
+      success(msg)
+    } catch (err: unknown) {
+      const error = err as ApiErrorShape
+      const msg = error.response?.data?.errors?.code?.[0] || error.response?.data?.message || "Code invalide."
       setTwoFactorFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setTwoFactorVerifySaving(false)
     }
@@ -331,7 +420,9 @@ export default function SettingsPage() {
 
   const handleDisable2FA = async () => {
     if (!twoFactorCode) {
-      setTwoFactorFeedback({ type: "error", message: "Entrez un code 2FA pour désactiver." })
+      const msg = "Entrez un code 2FA pour désactiver."
+      setTwoFactorFeedback({ type: "error", message: msg })
+      toastError(msg)
       return
     }
     setTwoFactorDisableSaving(true)
@@ -344,10 +435,14 @@ export default function SettingsPage() {
       setRecoveryCodes([])
       setShowRecoveryCodes(false)
       setTwoFactorCode("")
-      setTwoFactorFeedback({ type: "success", message: "2FA désactivée." })
-    } catch (err: any) {
-      const msg = err.response?.data?.errors?.code?.[0] || err.response?.data?.message || "Code invalide."
+      const msg = "2FA désactivée."
+      setTwoFactorFeedback({ type: "success", message: msg })
+      success(msg)
+    } catch (err: unknown) {
+      const error = err as ApiErrorShape
+      const msg = error.response?.data?.errors?.code?.[0] || error.response?.data?.message || "Code invalide."
       setTwoFactorFeedback({ type: "error", message: msg })
+      toastError(msg)
     } finally {
       setTwoFactorDisableSaving(false)
     }
@@ -355,40 +450,6 @@ export default function SettingsPage() {
 
   const copyCodes = () => {
     navigator.clipboard.writeText(recoveryCodes.join("\n"))
-  }
-
-  const feedbackColors = (type: "success" | "error") =>
-    type === "success"
-      ? "bg-green-500/10 border-green-500/20 text-green-600"
-      : "bg-red-500/10 border-red-500/20 text-red-600"
-
-  function Feedback({ feedback }: { feedback: { type: "success" | "error"; message: string } | null }) {
-    if (!feedback) return null
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={cn("flex items-center gap-2 p-3 rounded-lg text-sm border", feedbackColors(feedback.type))}
-      >
-        {feedback.type === "success" ? <Check className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-        <span>{feedback.message}</span>
-      </motion.div>
-    )
-  }
-
-  function SwitchField({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
-    return (
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        <Switch.Root
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          className="relative w-11 h-6 rounded-full bg-[var(--secondary)] data-[state=checked]:bg-[var(--primary)] transition-colors outline-none cursor-pointer"
-        >
-          <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow-sm translate-x-0.5 data-[state=checked]:translate-x-[22px] transition-transform" />
-        </Switch.Root>
-      </div>
-    )
   }
 
   return (
@@ -494,7 +555,7 @@ export default function SettingsPage() {
                     onChange={(e) => setCurrencyCode(e.target.value)}
                     className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] pl-10 pr-8 py-2 text-sm text-[var(--foreground)] appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                   >
-                    {CURRENCIES.map((c) => (
+                    {currencies.map((c) => (
                       <option key={c.code} value={c.code}>{c.flag} {c.code} — {c.name}</option>
                     ))}
                   </select>
@@ -756,7 +817,7 @@ export default function SettingsPage() {
                 </p>
                 <div className="flex justify-center">
                   <div className="p-4 bg-white rounded-xl">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUri)}`} alt="QR Code 2FA" className="w-48 h-48" />
+                    <QrCodeImage value={qrCodeUri} size={192} className="w-48 h-48" />
                   </div>
                 </div>
                 <p className="text-xs text-[var(--muted-foreground)] text-center">
@@ -862,7 +923,7 @@ export default function SettingsPage() {
                       </Badge>
                       {!session.is_current && (
                         <button
-                          onClick={() => handleRevokeSession(session.id)}
+                          onClick={() => setRevokeSessionId(session.id)}
                           disabled={revokingId === session.id}
                           className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
                         >
@@ -932,6 +993,18 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={revokeSessionId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevokeSessionId(null)
+        }}
+        title="Révoquer cette session ?"
+        description="La session sera déconnectée sur cet appareil."
+        confirmLabel="Révoquer"
+        loading={revokingId === revokeSessionId}
+        onConfirm={() => revokeSessionId && handleRevokeSession(revokeSessionId)}
+      />
     </div>
   )
 }

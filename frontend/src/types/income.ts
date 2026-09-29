@@ -2,7 +2,7 @@
    Income Types
    ============================================ */
 
-export type IncomeSourceType = 'salary' | 'business' | 'freelance' | 'gift' | 'investment' | 'other'
+import type { PaymentMethod } from './expense'
 
 export interface Income {
   id: string
@@ -14,7 +14,7 @@ export interface Income {
   amount: number
   currency_code: string
   date: string
-  source_type: IncomeSourceType
+  payment_method: PaymentMethod
   is_recurring: boolean
   recurrence_rule: string | null
   created_at: string
@@ -29,7 +29,7 @@ export interface IncomeFormData {
   amount: number
   currency_code: string
   date: string
-  source_type: IncomeSourceType
+  payment_method: PaymentMethod
   category_id: string
   account_id: string
   is_recurring: boolean
@@ -40,7 +40,7 @@ export interface IncomeStats {
   total: number
   count: number
   average: number
-  by_source: { source: IncomeSourceType; amount: number; percentage: number }[]
+  by_category: { category_id: string; category: string; icon: string; amount: number; percentage: number }[]
   by_month: { month: string; amount: number }[]
   vs_last_month: number
 }

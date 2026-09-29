@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { motion } from "framer-motion";
-import { UserPlus, Mail, Lock, Eye, EyeOff, User as UserIcon, AlertCircle, Check } from "lucide-react";
+import { UserPlus, Mail, Lock, Eye, EyeOff, User as UserIcon, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthLayout } from "@/components/layout/AuthLayout";
@@ -56,11 +56,11 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
-    watch,
   } = useForm<RegisterForm>();
 
-  const password = watch("password");
+  const password = useWatch({ control, name: "password" });
   const strength = getPasswordStrength(password || "");
 
   const onSubmit = async (data: RegisterForm) => {
@@ -73,9 +73,10 @@ export default function RegisterPage() {
       const res = await authService.register({ ...data, currency_code: currency });
       setAuth(res.user, res.access_token);
       navigate("/", { replace: true });
-    } catch (err: any) {
-      const msg = err.response?.data?.message
-        || err.response?.data?.errors?.email?.[0]
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string; errors?: { email?: string[] } } } };
+      const msg = error.response?.data?.message
+        || error.response?.data?.errors?.email?.[0]
         || "Une erreur est survenue.";
       setServerError(msg);
     }
@@ -84,7 +85,7 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       title="Inscription"
-      subtitle="Créez votre compte GestDepense"
+      subtitle="Créez votre compte Fin-Track"
       icon={<UserPlus className="w-6 h-6" />}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

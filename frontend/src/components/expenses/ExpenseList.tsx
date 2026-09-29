@@ -3,12 +3,10 @@ import { expenseService, accountService, categoryService } from '../../services/
 import { Expense } from '../../types/expense'
 import { Account } from '../../types/account'
 import { Category } from '../../types/index'
+import { iconEmoji } from '../../lib/iconMap'
 import { 
   Search, 
   Trash2, 
-  Calendar, 
-  CreditCard, 
-  Tag, 
   ChevronLeft, 
   ChevronRight, 
   FilterX, 
@@ -16,9 +14,20 @@ import {
   TrendingDown
 } from 'lucide-react'
 import { Card, CardContent } from '../ui/card'
-import { Badge } from '../ui/badge'
+import { ConfirmDialog } from '../ui/confirm-dialog'
+import { useToastStore, getApiErrorMessage } from '../../stores/toastStore'
+import { useMonthStore } from '../../stores/monthStore'
+
+interface PaginationMeta {
+  current_page: number
+  last_page: number
+  total: number
+  from: number
+  to: number
+}
 
 export default function ExpenseList() {
+  const { currentMonth, currentYear } = useMonthStore()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
   const [categories, setCategories] = useState<Category[]>([])
@@ -29,9 +38,13 @@ export default function ExpenseList() {
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedAccount, setSelectedAccount] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [paginationMeta, setPaginationMeta] = useState<any>(null)
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | null>(null)
   
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
+
+  const deletingExpense = expenses.find((e) => e.id === confirmDeleteId)
 
   // Load Categories & Accounts for Filters
   useEffect(() => {
@@ -48,15 +61,16 @@ export default function ExpenseList() {
   // Fetch Expenses with filters and page
   const fetchExpenses = () => {
     setLoading(true)
-    const params: Record<string, any> = {
-      page: currentPage
+    const params: Record<string, unknown> = {
+      page: currentPage,
+      month: currentMonth,
+      year: currentYear,
     }
     if (selectedCategory) params.category_id = selectedCategory
     if (selectedAccount) params.account_id = selectedAccount
 
     expenseService.getAll(params)
       .then(res => {
-        const data = res.data.data ? res.data.data : res.data
         if (res.data.data && Array.isArray(res.data.data)) {
           setExpenses(res.data.data)
           setPaginationMeta({
@@ -79,19 +93,28 @@ export default function ExpenseList() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset page when month changes
+    setCurrentPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch on month change
+  }, [currentMonth, currentYear])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/filter change
     fetchExpenses()
-  }, [selectedCategory, selectedAccount, currentPage])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when filters change
+  }, [selectedCategory, selectedAccount, currentPage, currentMonth, currentYear])
 
   // Handle transaction delete
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette dépense ?')) return
     setDeletingId(id)
     try {
-      await expenseService.delete(id)
+      const res = await expenseService.delete(id)
+      success((res.data as { message?: string })?.message || 'Dépense supprimée avec succès.')
+      setConfirmDeleteId(null)
       fetchExpenses() // reload list
     } catch (err) {
-      console.error('Error deleting expense:', err)
-      alert('Erreur lors de la suppression')
+      toastError(getApiErrorMessage(err, 'Erreur lors de la suppression de la dépense.'))
+      setConfirmDeleteId(null)
     } finally {
       setDeletingId(null)
     }
@@ -193,7 +216,7 @@ export default function ExpenseList() {
             >
               <option value="">📁 Toutes catégories</option>
               {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                <option key={cat.id} value={cat.id}>{iconEmoji(cat.icon)} {cat.name}</option>
               ))}
             </select>
           </div>
@@ -268,7 +291,7 @@ export default function ExpenseList() {
                               backgroundColor: `${categoryColor}12` 
                             }}
                           >
-                            <span className="mr-1.5">{expense.category?.icon || '📁'}</span>
+                            <span className="mr-1.5">{iconEmoji(expense.category?.icon)}</span>
                             {expense.category?.name || 'Général'}
                           </span>
                         </td>
@@ -295,7 +318,7 @@ export default function ExpenseList() {
                         {/* Action Buttons */}
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <button
-                            onClick={() => handleDelete(expense.id)}
+                            onClick={() => setConfirmDeleteId(expense.id)}
                             disabled={deletingId === expense.id}
                             className="text-[var(--muted-foreground)] hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 cursor-pointer inline-flex items-center justify-center"
                             title="Supprimer la dépense"
@@ -361,6 +384,21 @@ export default function ExpenseList() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+        title="Supprimer cette dépense ?"
+        description={
+          deletingExpense
+            ? `« ${deletingExpense.description} » de ${Number(deletingExpense.amount).toLocaleString('fr-FR')} ${deletingExpense.currency_code} sera définitivement supprimée.`
+            : undefined
+        }
+        loading={deletingId === confirmDeleteId}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+      />
     </div>
   )
 }

@@ -40,7 +40,7 @@ export const useUIStore = create<UIState>()(
       setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
     }),
     {
-      name: 'gestdepense-ui',
+      name: 'Fin-Track-ui',
       partialize: (state) => ({
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
@@ -51,7 +51,7 @@ export const useUIStore = create<UIState>()(
 
 // Initialize theme on load
 if (typeof window !== 'undefined') {
-  const stored = JSON.parse(localStorage.getItem('gestdepense-ui') || '{}')
+  const stored = JSON.parse(localStorage.getItem('Fin-Track-ui') || '{}')
   const theme = stored?.state?.theme || 'system'
   const root = document.documentElement
   if (theme === 'system') {

@@ -30,7 +30,7 @@ export function AuthLayout({ children, title, subtitle, icon }: AuthLayoutProps)
               <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-[var(--primary)] shadow-lg shadow-[var(--primary)]/20">
                 <Wallet className="w-6 h-6 text-white" />
               </div>
-              <span className="text-2xl font-bold text-[var(--foreground)]">GestDepense</span>
+              <span className="text-2xl font-bold text-[var(--foreground)]">Fin-Track</span>
             </div>
 
             <h2 className="text-3xl font-bold text-[var(--foreground)] leading-tight mb-4">
@@ -103,7 +103,7 @@ export function AuthLayout({ children, title, subtitle, icon }: AuthLayoutProps)
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-[var(--primary)]">
               <Wallet className="w-5 h-5 text-white" />
             </div>
-            <span className="text-lg font-bold text-[var(--foreground)]">GestDepense</span>
+            <span className="text-lg font-bold text-[var(--foreground)]">Fin-Track</span>
           </div>
 
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-lg shadow-black/5 p-8 relative overflow-hidden">

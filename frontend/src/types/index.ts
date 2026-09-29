@@ -15,14 +15,41 @@ export interface Caisse {
   updated_at: string
   remaining: number
   percentage_used: number
+  source_account_id?: string | null
+  status?: 'active' | 'closed'
+  source_account?: { id: string; name: string; currency_code: string }
 }
 
 export interface CaisseFormData {
   name: string
   budget_amount: number
+  source_account_id?: string
   icon: string
   color: string
   description?: string
+}
+
+/* ============================================
+   Movement Types (journal des mouvements d'argent)
+   ============================================ */
+
+export type MovementType =
+  | 'apport' | 'regulation' | 'transfer'
+  | 'expense' | 'income' | 'caisse_fund'
+  | 'caisse_refund' | 'caisse_close' | 'out'
+
+export interface Movement {
+  id: string
+  user_id: string
+  type: MovementType
+  from_type: 'account' | 'caisse' | 'external' | null
+  from_id: string | null
+  to_type: 'account' | 'caisse' | 'external' | null
+  to_id: string | null
+  amount: number
+  currency_code: string
+  label: string | null
+  created_at: string
 }
 
 /* ============================================
@@ -34,6 +61,7 @@ export type SavingStatus = 'active' | 'completed' | 'cancelled'
 export interface Saving {
   id: string
   user_id: string
+  account_id: string | null
   name: string
   target_amount: number
   current_amount: number
@@ -47,6 +75,7 @@ export interface Saving {
   updated_at: string
   progress: number
   remaining: number
+  account?: { id: string; name: string; currency_code: string }
   transactions?: SavingTransaction[]
 }
 
@@ -65,6 +94,7 @@ export interface SavingFormData {
   deadline?: string
   icon: string
   color: string
+  account_id?: string
   auto_save_amount?: number
   auto_save_frequency?: string
 }
@@ -104,6 +134,26 @@ export interface BudgetFormData {
   total_budget: number
   notes?: string
   categories: { category_id: string; allocated_amount: number }[]
+}
+
+export interface BudgetCategoryUsage {
+  category: { id: string; name: string; color: string; icon: string; is_system: boolean }
+  allocated_amount: number
+  spent_amount: number
+  remaining: number
+  percentage_used: number
+  transaction_count: number
+  is_planned: boolean
+}
+
+export interface BudgetByCategory {
+  month: number
+  year: number
+  has_budget: boolean
+  total_allocated: number
+  total_spent: number
+  total_remaining: number
+  categories: BudgetCategoryUsage[]
 }
 
 /* ============================================
@@ -155,6 +205,7 @@ export type DebtStatus = 'active' | 'partially_paid' | 'paid' | 'overdue'
 export interface Debt {
   id: string
   user_id: string
+  account_id: string | null
   type: DebtType
   person_name: string
   person_contact: string | null
@@ -167,12 +218,14 @@ export interface Debt {
   created_at: string
   updated_at: string
   payments?: DebtPayment[]
+  account?: { id: string; name: string; currency_code: string }
   progress: number
 }
 
 export interface DebtPayment {
   id: string
   debt_id: string
+  account_id?: string | null
   amount: number
   date: string
   note: string | null
@@ -186,6 +239,56 @@ export interface DebtFormData {
   currency_code: string
   due_date?: string
   description?: string
+  account_id: string
+}
+
+/* ============================================
+   Invoice (Facture) Types
+   ============================================ */
+
+export type InvoiceDirection = 'issued' | 'received'
+export type InvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue'
+
+export interface Invoice {
+  id: string
+  user_id: string
+  account_id: string | null
+  direction: InvoiceDirection
+  number: string | null
+  counterparty: string
+  amount: number
+  remaining_amount: number
+  currency_code: string
+  issue_date: string
+  due_date: string | null
+  status: InvoiceStatus
+  description: string | null
+  created_at: string
+  updated_at: string
+  payments?: InvoicePayment[]
+  account?: { id: string; name: string; currency_code: string }
+  progress: number
+}
+
+export interface InvoicePayment {
+  id: string
+  invoice_id: string
+  account_id?: string | null
+  amount: number
+  date: string
+  note: string | null
+}
+
+export interface InvoiceFormData {
+  direction: InvoiceDirection
+  number?: string
+  counterparty: string
+  amount: number
+  currency_code: string
+  issue_date: string
+  due_date?: string
+  description?: string
+  account_id: string
 }
 
 /* ============================================
@@ -200,6 +303,10 @@ export interface DashboardOverview {
   expense_trend: number
   income_trend: number
   savings_rate: number
+  today_expenses?: number
+  today_incomes?: number
+  week_expenses?: number
+  week_incomes?: number
 }
 
 export interface MonthlySummary {
@@ -227,6 +334,90 @@ export interface TrendData {
   incomes: number
   expenses: number
   savings: number
+}
+
+export interface ReportAccount {
+  name: string
+  type: string
+  currency_code: string
+  balance: number
+}
+
+export interface ReportCaisse {
+  name: string
+  status: string
+  currency_code: string
+  budget_amount: number
+  spent_amount: number
+  remaining: number
+}
+
+export interface ReportTransaction {
+  date: string
+  title: string
+  amount: number
+  currency_code: string
+  account?: string | null
+  category?: string | null
+  source?: string | null
+  status?: string | null
+}
+
+export interface ReportSummary {
+  interval: { start: string; end: string; label: string }
+  accounts: ReportAccount[]
+  caisses: ReportCaisse[]
+  incomes: ReportTransaction[]
+  expenses: ReportTransaction[]
+  totals: { incomes: number; expenses: number; net: number }
+}
+
+export interface SearchResultExpense {
+  id: string
+  title: string
+  amount: number
+  currency_code: string
+  date: string
+  category?: string | null
+}
+
+export interface SearchResultIncome {
+  id: string
+  title: string
+  amount: number
+  currency_code: string
+  date: string
+  category?: string | null
+}
+
+export interface SearchResultAccount {
+  id: string
+  name: string
+  type: string
+  currency_code: string
+  balance: number
+}
+
+export interface SearchResultCaisse {
+  id: string
+  name: string
+  status: string
+  remaining: number
+}
+
+export interface SearchResult {
+  expenses: SearchResultExpense[]
+  incomes: SearchResultIncome[]
+  accounts: SearchResultAccount[]
+  caisses: SearchResultCaisse[]
+}
+
+export interface AppNotification {
+  id: string
+  type: string
+  data: Record<string, unknown>
+  read_at: string | null
+  created_at: string
 }
 
 export interface RecentTransaction {

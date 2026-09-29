@@ -1,6 +1,6 @@
-# GestDepense — SaaS Premium de Gestion Financière
+# Fin-Track — SaaS Premium de Gestion Financière
 
-GestDepense est une application web fullstack de gestion financière personnelle, développée avec **Laravel 12** (API Backend) et **React 19** (Frontend).
+Fin-Track est une application web fullstack de gestion financière personnelle, développée avec **Laravel 12** (API Backend) et **React 19** (Frontend).
 
 ---
 
@@ -54,7 +54,7 @@ Assurez-vous d'avoir installé sur votre machine :
    php artisan migrate
    ```
 
-L'API Backend sera accessible sur : **http://localhost:8000**
+L'API Backend sera accessible sur : **http://localhost:12000**
 
 ### Étape 2 : Démarrer le Frontend (React SPA)
 
@@ -72,7 +72,7 @@ Le frontend utilise Vite comme bundler de développement.
 
 3. **Configurer l'environnement :**
    ```bash
-   echo "VITE_API_URL=http://localhost:8000/api/v1" > .env
+   echo "VITE_API_URL=http://localhost:12000/api/v1" > .env
    ```
 
 4. **Lancer le serveur de développement :**
@@ -80,7 +80,7 @@ Le frontend utilise Vite comme bundler de développement.
    npm run dev
    ```
 
-L'interface web sera accessible sur : **http://localhost:5173** (par défaut avec Vite).
+L'interface web sera accessible sur : **http://localhost:12005** (par défaut avec Vite).
 
 ---
 

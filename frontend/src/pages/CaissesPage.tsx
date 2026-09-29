@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { useForm } from 'react-hook-form'
 import { motion } from 'framer-motion'
-import { Wallet, Plus, Pencil, Trash2, AlertCircle } from 'lucide-react'
+import { Wallet, Plus, Pencil, Trash2, AlertCircle, ArrowDownToLine, Lock } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
@@ -14,6 +14,10 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import type { Caisse, CaisseFormData } from '../types'
+import type { Account } from '../types/account'
+import { MoneyActionModal, DeleteResolutionModal } from '../components/money/MoneyActionModal'
+import type { MoneyActionKind, MoneyEntity } from '../components/money/MoneyActionModal'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 
 const mockCaisses: Caisse[] = [
   { id: '1', user_id: '', name: 'Alimentation', budget_amount: 500000, spent_amount: 320000, icon: '🍎', color: '#22C55E', description: null, created_at: '', updated_at: '', remaining: 180000, percentage_used: 64 },
@@ -23,7 +27,9 @@ const mockCaisses: Caisse[] = [
 ]
 
 function formatCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount ?? 0) + '\u00A0' + currency
+  // return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(amount ?? 0) + ' ' + currency
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: currency, minimumFractionDigits: 0 }).format(amount ?? 0);
+
 }
 
 function getProgressColor(pct: number): string {
@@ -38,14 +44,22 @@ function getBadgeVariant(pct: number): 'destructive' | 'warning' | 'success' {
   return 'success'
 }
 
+function caisseCurrency(c: Caisse, fallback: string): string {
+  return c.source_account?.currency_code || fallback
+}
+
 export default function CaissesPage() {
   const [caisses, setCaisses] = useState<Caisse[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCaisse, setEditingCaisse] = useState<Caisse | null>(null)
+  const [moneyAction, setMoneyAction] = useState<{ kind: MoneyActionKind; entity: MoneyEntity } | null>(null)
+  const [deleting, setDeleting] = useState<Caisse | null>(null)
   const { user } = useAuthStore()
   const currency = user?.currency_code || 'GNF'
+  const { success, error: toastError } = useToastStore()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CaisseFormData>()
 
@@ -54,7 +68,10 @@ export default function CaissesPage() {
     setError(null)
     try {
       const { data } = await api.get('/caisses')
-      setCaisses(data.data || [])
+      const list = Array.isArray(data) ? data : (data.data || [])
+      setCaisses(list)
+      const { data: accData } = await api.get('/accounts')
+      setAccounts(Array.isArray(accData) ? accData : (accData.data || []))
     } catch {
       setCaisses(mockCaisses)
       setError("Backend non connecté — affichage des données d'exemple")
@@ -63,30 +80,37 @@ export default function CaissesPage() {
     }
   }
 
-  useEffect(() => { fetchCaisses() }, [])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
+    fetchCaisses()
+  }, [])
 
   const openCreate = () => {
     setEditingCaisse(null)
-    reset({ name: '', budget_amount: 0, icon: '🎯', color: '#4F46E5', description: '' })
+    reset({ name: '', budget_amount: 0, source_account_id: accounts[0]?.id || '', icon: '🎯', color: '#4F46E5', description: '' })
     setDialogOpen(true)
   }
 
   const openEdit = (c: Caisse) => {
     setEditingCaisse(c)
-    reset({ name: c.name, budget_amount: c.budget_amount, icon: c.icon, color: c.color, description: c.description || '' })
+    reset({ name: c.name, budget_amount: c.budget_amount, source_account_id: c.source_account_id || '', icon: c.icon, color: c.color, description: c.description || '' })
     setDialogOpen(true)
   }
 
   const onSubmit = async (formData: CaisseFormData) => {
     try {
       if (editingCaisse) {
-        await api.put(`/caisses/${editingCaisse.id}`, formData)
+        const { budget_amount, source_account_id, ...meta } = formData
+        const res = await api.put(`/caisses/${editingCaisse.id}`, meta)
+        success((res.data as { message?: string })?.message || 'Caisse modifiée avec succès.')
       } else {
-        await api.post('/caisses', formData)
+        const res = await api.post('/caisses', formData)
+        success((res.data as { message?: string })?.message || 'Caisse créée avec succès.')
       }
       setDialogOpen(false)
       fetchCaisses()
-    } catch {
+    } catch (err) {
+      toastError(getApiErrorMessage(err, editingCaisse ? 'Erreur lors de la modification de la caisse.' : 'Erreur lors de la création de la caisse.'))
       if (editingCaisse) {
         setCaisses(prev => prev.map(c =>
           c.id === editingCaisse.id
@@ -95,7 +119,7 @@ export default function CaissesPage() {
         ))
       } else {
         const newCaisse: Caisse = {
-          id: Date.now().toString(),
+          id: crypto.randomUUID(),
           user_id: '',
           name: formData.name,
           budget_amount: formData.budget_amount,
@@ -114,18 +138,27 @@ export default function CaissesPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (mode: "lost" | "redirect", destId?: string) => {
+    if (!deleting) return
     try {
-      await api.delete(`/caisses/${id}`)
-      setCaisses(prev => prev.filter(c => c.id !== id))
-    } catch {
-      setCaisses(prev => prev.filter(c => c.id !== id))
+      const res = await api.delete(`/caisses/${deleting.id}`, { data: { mode, account_id: destId } })
+      success((res.data as { message?: string })?.message || 'Caisse supprimée avec succès.')
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Erreur lors de la suppression de la caisse.'))
     }
+    fetchCaisses()
   }
 
-  const totalBudget = caisses.reduce((s, c) => s + c.budget_amount, 0)
-  const totalSpent = caisses.reduce((s, c) => s + c.spent_amount, 0)
+  const totalBudget = caisses.reduce((s, c) => s + Number(c.budget_amount), 0)
+  const totalSpent = caisses.reduce((s, c) => s + Number(c.spent_amount), 0)
   const overallPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
+
+  const firstCaisse: Caisse = caisses[caisses.length - 1] ?? caisses[0]!
+const summaryCurrency = caisses.length > 0
+    ? new Set(caisses.map((c) => caisseCurrency(c, currency))).size === 1
+      ? caisseCurrency(firstCaisse, currency)
+      : currency
+    : currency
 
   if (loading) {
     return (
@@ -190,7 +223,7 @@ export default function CaissesPage() {
             <CardTitle className="text-sm text-[var(--muted-foreground)] font-medium">Budget total</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <p className="text-2xl font-bold text-[var(--foreground)]">{formatCurrency(totalBudget, currency)}</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">{formatCurrency(totalBudget, summaryCurrency)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -198,7 +231,7 @@ export default function CaissesPage() {
             <CardTitle className="text-sm text-[var(--muted-foreground)] font-medium">Dépensé total</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <p className="text-2xl font-bold text-[var(--destructive)]">{formatCurrency(totalSpent, currency)}</p>
+            <p className="text-2xl font-bold text-[var(--destructive)]">{formatCurrency(totalSpent, summaryCurrency)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -248,15 +281,25 @@ export default function CaissesPage() {
                       <div className="min-w-0">
                         <h3 className="font-semibold text-[var(--foreground)] truncate">{caisse.name}</h3>
                         <p className="text-xs text-[var(--muted-foreground)] truncate">
-                          {formatCurrency(caisse.spent_amount, currency)} / {formatCurrency(caisse.budget_amount, currency)}
+                          {formatCurrency(caisse.spent_amount, caisseCurrency(caisse, currency))} / {formatCurrency(caisse.budget_amount, caisseCurrency(caisse, currency))}
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      {caisse.status !== "closed" && (
+                        <>
+                          <Button variant="ghost" size="icon-sm" title="Étendre (apport)" onClick={() => setMoneyAction({ kind: "fund", entity: { id: caisse.id, name: caisse.name, type: "caisse" } })}>
+                            <ArrowDownToLine className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon-sm" title="Clôturer" onClick={() => setMoneyAction({ kind: "close", entity: { id: caisse.id, name: caisse.name, type: "caisse" } })}>
+                            <Lock className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                       <Button variant="ghost" size="icon-sm" onClick={() => openEdit(caisse)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(caisse.id)}>
+                      <Button variant="ghost" size="icon-sm" onClick={() => setDeleting(caisse)}>
                         <Trash2 className="w-4 h-4 text-[var(--destructive)]" />
                       </Button>
                     </div>
@@ -271,10 +314,10 @@ export default function CaissesPage() {
                         'font-medium',
                         caisse.remaining < 0 ? 'text-[var(--destructive)]' : 'text-[var(--foreground)]'
                       )}>
-                        {caisse.remaining < 0 ? '-' : ''}{formatCurrency(Math.abs(caisse.remaining), currency)}
+                        {caisse.remaining < 0 ? '-' : ''}{formatCurrency(Math.abs(caisse.remaining), caisseCurrency(caisse, currency))}
                       </span>
-                      <Badge variant={getBadgeVariant(caisse.percentage_used)}>
-                        {caisse.percentage_used}% utilisé
+                      <Badge variant={caisse.status === "closed" ? "secondary" : getBadgeVariant(caisse.percentage_used)}>
+                        {caisse.status === "closed" ? "Clôturée" : `${caisse.percentage_used}% utilisé`}
                       </Badge>
                     </div>
                   </div>
@@ -300,16 +343,44 @@ export default function CaissesPage() {
               />
               {errors.name && <p className="text-xs text-[var(--destructive)]">{errors.name.message}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="budget_amount">Budget</Label>
-              <Input
-                id="budget_amount"
-                type="number"
-                {...register('budget_amount', { required: 'Le budget est requis', valueAsNumber: true })}
-                placeholder="Ex: 500000"
-              />
-              {errors.budget_amount && <p className="text-xs text-[var(--destructive)]">{errors.budget_amount.message}</p>}
-            </div>
+            {!editingCaisse && (
+              <div className="space-y-2">
+                <Label htmlFor="budget_amount">Montant à placer dans la caisse</Label>
+                <Input
+                  id="budget_amount"
+                  type="number"
+                  {...register('budget_amount', { required: 'Le montant est requis', valueAsNumber: true })}
+                  placeholder="Ex: 500000"
+                />
+                {errors.budget_amount && <p className="text-xs text-[var(--destructive)]">{errors.budget_amount.message}</p>}
+              </div>
+            )}
+            {editingCaisse && (
+              <div className="space-y-2">
+                <Label>Montant</Label>
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/30 px-3 py-2 text-sm text-[var(--muted-foreground)]">
+                  {formatCurrency(editingCaisse.budget_amount, caisseCurrency(editingCaisse, currency))}
+                </div>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Le montant d'une caisse ne peut plus être modifié. Utilisez « Étendre » pour ajouter des fonds.
+                </p>
+              </div>
+            )}
+            {!editingCaisse && (
+              <div className="space-y-2">
+                <Label htmlFor="source_account_id">Compte source (l'argent quittera ce compte)</Label>
+                <select
+                  id="source_account_id"
+                  {...register('source_account_id', { required: 'Choisissez un compte source' })}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm focus:border-[var(--primary)] focus:outline-none"
+                >
+                  {accounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance, a.currency_code)})</option>
+                  ))}
+                </select>
+                {errors.source_account_id && <p className="text-xs text-[var(--destructive)]">{errors.source_account_id.message}</p>}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="icon">Icône</Label>
@@ -331,6 +402,25 @@ export default function CaissesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <MoneyActionModal
+        open={!!moneyAction}
+        onOpenChange={(v) => { if (!v) setMoneyAction(null) }}
+        kind={moneyAction?.kind ?? "fund"}
+        entity={moneyAction?.entity ?? { id: "", name: "", type: "caisse" }}
+        currency={currency}
+        accounts={accounts}
+        caisses={caisses}
+        onDone={fetchCaisses}
+      />
+
+      <DeleteResolutionModal
+        open={!!deleting}
+        onOpenChange={(v) => { if (!v) setDeleting(null) }}
+        entityName={deleting?.name || ""}
+        accounts={accounts}
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }

@@ -2,10 +2,11 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { MobileNav } from './MobileNav'
-import { useUIStore } from '@/stores/uiStore'
+import { QuickAddModals } from './QuickAddModals'
+import { LockScreen } from './LockScreen'
+import { Toaster } from '../ui/toaster'
 
 export function AppLayout() {
-  const { sidebarCollapsed } = useUIStore()
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">
@@ -25,6 +26,15 @@ export function AppLayout() {
 
       {/* Mobile Bottom Nav */}
       <MobileNav />
+
+      {/* Global quick-add dialogs (accessible from anywhere) */}
+      <QuickAddModals />
+
+      {/* Session inactivity lock */}
+      <LockScreen />
+
+      {/* Global toasts */}
+      <Toaster />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { motion } from "framer-motion";
 import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,11 @@ export default function ResetPasswordPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
-    watch,
   } = useForm<ResetForm>();
 
-  const password = watch("password");
+  const password = useWatch({ control, name: "password" });
 
   const onSubmit = async (data: ResetForm) => {
     setServerError("");
@@ -42,9 +42,10 @@ export default function ResetPasswordPage() {
       });
       setSuccess(true);
       setTimeout(() => navigate("/connexion", { replace: true }), 3000);
-    } catch (err: any) {
-      const msg = err.response?.data?.message
-        || err.response?.data?.errors?.email?.[0]
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string; errors?: { email?: string[] } } } };
+      const msg = error.response?.data?.message
+        || error.response?.data?.errors?.email?.[0]
         || "Une erreur est survenue. Veuillez réessayer.";
       setServerError(msg);
     }

@@ -26,6 +26,7 @@ export default function CallbackPage() {
     } else {
       navigate("/connexion", { replace: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   return (

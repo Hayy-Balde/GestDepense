@@ -51,6 +51,30 @@ export const PAYMENT_METHODS = [
   { value: 'other', label: 'Autre' },
 ] as const
 
+export const PAYMENT_METHOD_ICONS: Record<string, string> = {
+  cash: '💵',
+  bank_transfer: '🏦',
+  mobile_money: '📱',
+  credit_card: '💳',
+  debit_card: '💳',
+  check: '✍️',
+  other: '❓',
+}
+
+export const PAYMENT_METHODS_BY_ACCOUNT_TYPE: Record<string, string[]> = {
+  bank: ['bank_transfer', 'check', 'debit_card', 'cash', 'other'],
+  cash: ['cash', 'other'],
+  mobile_money: ['mobile_money', 'cash', 'other'],
+  wallet: ['cash', 'other'],
+  crypto: ['bank_transfer', 'other'],
+  savings: ['bank_transfer', 'cash', 'other'],
+  credit_card: ['credit_card', 'other'],
+}
+
+export const ALL_PAYMENT_METHOD_VALUES = ['cash', 'bank_transfer', 'mobile_money', 'credit_card', 'debit_card', 'check', 'other'] as const
+
+export const DEFAULT_PAYMENT_METHODS: string[] = PAYMENT_METHODS_BY_ACCOUNT_TYPE.bank ?? []
+
 /* ============================================
    Expense Categories
    ============================================ */

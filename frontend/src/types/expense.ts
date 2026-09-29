@@ -72,8 +72,29 @@ export interface ExpenseStats {
   total: number
   count: number
   average: number
-  max: number
   by_category: { category: string; amount: number; color: string; percentage: number }[]
   by_day: { date: string; amount: number }[]
   vs_last_month: number
+}
+
+export interface ExpenseCategoryStat {
+  category_id: string
+  category: string
+  icon: string | null
+  color: string | null
+  amount: number
+  count: number
+  percentage: number
+}
+
+export interface ExpenseBilan {
+  total: number
+  count: number
+  average: number
+  prev_average: number
+  prev_total: number
+  vs_last_month: number
+  by_category: ExpenseCategoryStat[]
+  most_frequent_category: ExpenseCategoryStat | null
+  highest_amount_category: ExpenseCategoryStat | null
 }

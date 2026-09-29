@@ -1,13 +1,13 @@
 import { useEffect, useState, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { motion } from "framer-motion"
 import { api } from "../services/api"
 import { useAuthStore } from "../stores/authStore"
 import type { Account, AccountFormData, AccountType, AccountSummary } from "../types/account"
-import { ACCOUNT_TYPES, CURRENCIES } from "../lib/constants"
+import { useConfig } from "../hooks/useConfig"
 import {
   Building2, Banknote, Smartphone, Wallet, PiggyBank, Bitcoin, CreditCard,
-  Plus, Loader2, Pencil, Trash2, AlertTriangle,
+  Plus, Loader2, Pencil, Trash2, AlertTriangle, ArrowRightLeft, Settings2, ArrowDownToLine,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card"
@@ -15,6 +15,10 @@ import { Button } from "../components/ui/button"
 import { Badge } from "../components/ui/badge"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
+import { MoneyActionModal, DeleteResolutionModal } from "../components/money/MoneyActionModal"
+import type { MoneyActionKind, MoneyEntity } from "../components/money/MoneyActionModal"
+import type { Caisse } from "../types"
+import { useToastStore, getApiErrorMessage } from "../stores/toastStore"
 
 const MOCK_ACCOUNTS: Account[] = [
   { id: "mock-1", user_id: "mock", name: "Compte Courant", type: "bank", balance: 2_450_000, currency_code: "GNF", color: "#4F46E5", icon: "Building2", is_active: true, credit_limit: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
@@ -42,12 +46,17 @@ const fmt = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigit
 
 export default function AccountsPage() {
   const { user } = useAuthStore()
+  const { accountTypes, currencies } = useConfig()
   const currency = user?.currency_code || "GNF"
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [caisses, setCaisses] = useState<Caisse[]>([])
+  const [moneyAction, setMoneyAction] = useState<{ kind: MoneyActionKind; entity: MoneyEntity } | null>(null)
+  const [deleting, setDeleting] = useState<Account | null>(null)
+  const { success, error: toastError } = useToastStore()
 
   const form = useForm<AccountFormData>({
     defaultValues: {
@@ -62,30 +71,31 @@ export default function AccountsPage() {
     },
   })
 
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = form
-  const selectedType = watch("type")
+  const { register, handleSubmit, reset, control, formState: { errors, isSubmitting } } = form
+  const selectedType = useWatch({ control, name: "type" })
 
   const summary: AccountSummary | null = useMemo(() => {
     if (accounts.length === 0) return null
     const byType = Object.fromEntries(
-      ACCOUNT_TYPES.map(t => [t.value, { count: 0, balance: 0 }])
+      accountTypes.map(t => [t.value, { count: 0, balance: 0 }])
     ) as AccountSummary["by_type"]
     for (const a of accounts) {
       byType[a.type].count++
-      byType[a.type].balance += a.balance
+      byType[a.type].balance += Number(a.balance)
     }
     return {
-      total_balance: accounts.reduce((s, a) => s + a.balance, 0),
+      total_balance: accounts.reduce((s, a) => s + Number(a.balance), 0),
       total_accounts: accounts.length,
       by_type: byType,
     }
-  }, [accounts])
+  }, [accounts, accountTypes])
 
   const loadData = () => {
     setLoading(true)
     setError(null)
     api.get("/accounts")
       .then(res => setAccounts(res.data?.data || res.data || []))
+      .then(() => api.get("/caisses").then(res => setCaisses(res.data?.data || res.data || [])))
       .catch(() => {
         setAccounts(MOCK_ACCOUNTS)
         setError("Backend non connecté — données d'exemple affichées.")
@@ -93,7 +103,10 @@ export default function AccountsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
+    loadData()
+  }, [])
 
   const openCreate = () => {
     setEditingAccount(null)
@@ -110,13 +123,17 @@ export default function AccountsPage() {
   const onSubmit = async (data: AccountFormData) => {
     try {
       if (editingAccount) {
-        await api.put(`/accounts/${editingAccount.id}`, data)
+        const { balance, type, currency_code, credit_limit, ...meta } = data
+        const res = await api.put(`/accounts/${editingAccount.id}`, meta)
+        success((res.data as { message?: string })?.message || 'Compte modifié avec succès.')
       } else {
-        await api.post("/accounts", data)
+        const res = await api.post("/accounts", data)
+        success((res.data as { message?: string })?.message || 'Compte créé avec succès.')
       }
       setShowForm(false)
       loadData()
-    } catch {
+    } catch (err) {
+      toastError(getApiErrorMessage(err, editingAccount ? 'Erreur lors de la modification du compte.' : 'Erreur lors de la création du compte.'))
       if (editingAccount) {
         setAccounts(prev => prev.map(a => a.id === editingAccount.id ? { ...a, ...data, credit_limit: data.credit_limit ?? null, updated_at: new Date().toISOString() } : a))
       } else {
@@ -126,15 +143,18 @@ export default function AccountsPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer ce compte définitivement ?")) return
+  const handleDelete = async (mode: "lost" | "redirect", destId?: string) => {
+    if (!deleting) return
     try {
-      await api.delete(`/accounts/${id}`)
-      loadData()
-    } catch {
-      setAccounts(prev => prev.filter(a => a.id !== id))
+      const res = await api.delete(`/accounts/${deleting.id}`, { data: { mode, account_id: destId } })
+      success((res.data as { message?: string })?.message || 'Compte supprimé avec succès.')
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Erreur lors de la suppression du compte.'))
     }
+    loadData()
   }
+
+  const moneyEntity: MoneyEntity | null = moneyAction?.entity ?? null
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -177,7 +197,7 @@ export default function AccountsPage() {
               <CardTitle className="text-xl font-bold">{summary.total_accounts}</CardTitle>
             </CardHeader>
           </Card>
-          {ACCOUNT_TYPES.filter(t => (summary.by_type[t.value as AccountType]?.count || 0) > 0).slice(0, 2).map(t => {
+          {accountTypes.filter(t => (summary.by_type[t.value as AccountType]?.count || 0) > 0).slice(0, 2).map(t => {
             const byType = summary.by_type[t.value as AccountType]
             const Icon = TYPE_LUCIDE[t.value as AccountType] || Wallet
             return (
@@ -234,7 +254,7 @@ export default function AccountsPage() {
         >
           {accounts.map((account, index) => {
             const Icon = getIcon(account.icon)
-            const typeInfo = ACCOUNT_TYPES.find(t => t.value === account.type)
+            const typeInfo = accountTypes.find(t => t.value === account.type)
             return (
               <motion.div
                 key={account.id}
@@ -257,13 +277,36 @@ export default function AccountsPage() {
                       </div>
                       <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
+                          title="Apport"
+                          onClick={() => setMoneyAction({ kind: "apport", entity: { id: account.id, name: account.name, type: "account" } })}
+                          className="p-1.5 rounded-md hover:bg-[var(--muted)]/50 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                        >
+                          <ArrowDownToLine className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Régulation"
+                          onClick={() => setMoneyAction({ kind: "regulate", entity: { id: account.id, name: account.name, type: "account" } })}
+                          className="p-1.5 rounded-md hover:bg-[var(--muted)]/50 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Transfert"
+                          onClick={() => setMoneyAction({ kind: "transfer", entity: { id: account.id, name: account.name, type: "account" } })}
+                          className="p-1.5 rounded-md hover:bg-[var(--muted)]/50 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Modifier"
                           onClick={() => openEdit(account)}
                           className="p-1.5 rounded-md hover:bg-[var(--muted)]/50 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(account.id)}
+                          title="Supprimer"
+                          onClick={() => setDeleting(account)}
                           className="p-1.5 rounded-md hover:bg-red-500/10 text-[var(--muted-foreground)] hover:text-red-500 transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -314,14 +357,14 @@ export default function AccountsPage() {
                   {...register("type")}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {ACCOUNT_TYPES.map(t => (
+                  {accountTypes.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="balance">Solde Initial</Label>
-                <Input id="balance" type="number" step="0.01" {...register("balance", { valueAsNumber: true })} />
+                <Label htmlFor="balance">Solde Initial {editingAccount && <span className="text-xs text-[var(--muted-foreground)]">(via Régulation)</span>}</Label>
+                <Input id="balance" type="number" step="0.01" disabled={!!editingAccount} {...register("balance", { valueAsNumber: true })} />
               </div>
             </div>
 
@@ -333,7 +376,7 @@ export default function AccountsPage() {
                   {...register("currency_code")}
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {CURRENCIES.map(c => (
+                  {currencies.map(c => (
                     <option key={c.code} value={c.code}>{c.flag} {c.name} ({c.symbol})</option>
                   ))}
                 </select>
@@ -376,6 +419,25 @@ export default function AccountsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <MoneyActionModal
+        open={!!moneyAction}
+        onOpenChange={(v) => { if (!v) setMoneyAction(null) }}
+        kind={moneyAction?.kind ?? "apport"}
+        entity={moneyEntity ?? { id: "", name: "", type: "account" }}
+        currency={currency}
+        accounts={accounts}
+        caisses={caisses}
+        onDone={loadData}
+      />
+
+      <DeleteResolutionModal
+        open={!!deleting}
+        onOpenChange={(v) => { if (!v) setDeleting(null) }}
+        entityName={deleting?.name || ""}
+        accounts={accounts.filter((a) => a.id !== deleting?.id)}
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }

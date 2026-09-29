@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { motion } from 'framer-motion'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useMonthStore } from '../stores/monthStore'
-import { INCOME_CATEGORIES, MONTHS } from '../lib/constants'
+import { MONTHS, PAYMENT_METHODS, PAYMENT_METHOD_ICONS, PAYMENT_METHODS_BY_ACCOUNT_TYPE, DEFAULT_PAYMENT_METHODS } from '../lib/constants'
+import { resolveIcon } from '../lib/iconMap'
 import { cn } from '../lib/utils'
-import type { Income, IncomeFormData, IncomeSourceType, IncomeStats } from '../types/income'
+import type { Income, IncomeFormData, IncomeStats } from '../types/income'
+import type { Account } from '../types/account'
+import type { Category } from '../types/index'
 import {
   Dialog,
   DialogContent,
@@ -21,13 +24,14 @@ import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 import {
   TrendingUp,
   Gift,
   Plus,
   ChevronLeft,
   ChevronRight,
-  MoreHorizontal,
   ArrowUpRight,
   ArrowDownRight,
   Trash2,
@@ -37,41 +41,12 @@ import {
   CalendarDays,
 } from 'lucide-react'
 
-const SOURCE_LABELS: Record<IncomeSourceType, string> = {
-  salary: 'Salaire',
-  business: 'Business',
-  freelance: 'Freelance',
-  gift: 'Cadeau',
-  investment: 'Investissement',
-  other: 'Autre',
-}
-
-const SOURCE_OPTIONS: { value: IncomeSourceType; label: string }[] = [
-  { value: 'salary', label: 'Salaire' },
-  { value: 'business', label: 'Business' },
-  { value: 'freelance', label: 'Freelance' },
-  { value: 'gift', label: 'Cadeau' },
-  { value: 'investment', label: 'Investissement' },
-  { value: 'other', label: 'Autre' },
-]
-
-function getBadgeVariant(st: IncomeSourceType) {
-  const v: Record<string, string> = { salary: 'success', business: 'default', freelance: 'secondary', gift: 'warning', investment: 'default', other: 'outline' }
-  return v[st] || 'outline'
-}
-
-function getCategoryIcon(st: IncomeSourceType) {
-  const mapping: Record<IncomeSourceType, string> = { salary: 'salaire', business: 'business', freelance: 'freelance', gift: 'cadeau', investment: 'investissement', other: 'autre' }
-  const cat = INCOME_CATEGORIES[mapping[st]]
-  if (!cat) return MoreHorizontal
-  return cat.icon
-}
-
 const MOCK_INCOMES: Income[] = [
   {
     id: 'mock-1', user_id: 'mock', account_id: 'acc-1', category_id: 'salaire',
     title: 'Salaire Mensuel', description: null, amount: 2500000,
-    currency_code: 'GNF', date: '2026-06-01', source_type: 'salary',
+    currency_code: 'GNF', date: '2026-06-01',
+    payment_method: 'bank_transfer',
     is_recurring: true, recurrence_rule: 'monthly',
     created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z',
     account: { id: 'acc-1', name: 'Compte Principal', type: 'bank' },
@@ -80,7 +55,8 @@ const MOCK_INCOMES: Income[] = [
   {
     id: 'mock-2', user_id: 'mock', account_id: 'acc-2', category_id: 'freelance',
     title: 'Freelance Projet Web', description: null, amount: 800000,
-    currency_code: 'GNF', date: '2026-06-15', source_type: 'freelance',
+    currency_code: 'GNF', date: '2026-06-15',
+    payment_method: 'bank_transfer',
     is_recurring: false, recurrence_rule: null,
     created_at: '2026-06-15T00:00:00Z', updated_at: '2026-06-15T00:00:00Z',
     account: { id: 'acc-2', name: 'Compte Épargne', type: 'savings' },
@@ -89,7 +65,8 @@ const MOCK_INCOMES: Income[] = [
   {
     id: 'mock-3', user_id: 'mock', account_id: 'acc-1', category_id: 'business',
     title: 'Vente en ligne', description: null, amount: 350000,
-    currency_code: 'GNF', date: '2026-06-20', source_type: 'business',
+    currency_code: 'GNF', date: '2026-06-20',
+    payment_method: 'mobile_money',
     is_recurring: false, recurrence_rule: null,
     created_at: '2026-06-20T00:00:00Z', updated_at: '2026-06-20T00:00:00Z',
     account: { id: 'acc-1', name: 'Compte Principal', type: 'bank' },
@@ -99,10 +76,10 @@ const MOCK_INCOMES: Income[] = [
 
 const MOCK_STATS: IncomeStats = {
   total: 3650000, count: 3, average: 1216667,
-  by_source: [
-    { source: 'salary', amount: 2500000, percentage: 68.5 },
-    { source: 'freelance', amount: 800000, percentage: 21.9 },
-    { source: 'business', amount: 350000, percentage: 9.6 },
+  by_category: [
+    { category_id: 'cat-1', category: 'Salaire', icon: 'briefcase', amount: 2500000, percentage: 68.5 },
+    { category_id: 'cat-2', category: 'Freelance', icon: 'laptop', amount: 800000, percentage: 21.9 },
+    { category_id: 'cat-3', category: 'Business', icon: 'building-2', amount: 350000, percentage: 9.6 },
   ],
   by_month: [{ month: '2026-06', amount: 3650000 }],
   vs_last_month: 12.5,
@@ -115,18 +92,26 @@ export default function IncomesPage() {
 
   const [incomes, setIncomes] = useState<Income[]>([])
   const [stats, setStats] = useState<IncomeStats | null>(null)
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showDialog, setShowDialog] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
+
+  const deletingIncome = incomes.find((i) => i.id === confirmDeleteId)
 
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<IncomeFormData>({
     defaultValues: {
@@ -134,7 +119,7 @@ export default function IncomesPage() {
       amount: undefined as unknown as number,
       currency_code: currency,
       date: new Date().toISOString().split('T')[0],
-      source_type: 'salary',
+      payment_method: 'cash',
       category_id: '',
       account_id: '',
       description: '',
@@ -143,11 +128,51 @@ export default function IncomesPage() {
     },
   })
 
-  const isRecurring = watch('is_recurring')
+  const isRecurring = useWatch({ control, name: 'is_recurring' })
+  const accountId = useWatch({ control, name: 'account_id' })
+  const paymentMethod = useWatch({ control, name: 'payment_method' })
+
+  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const accountType = selectedAccount?.type ?? 'bank'
+  const availablePaymentMethods = PAYMENT_METHODS.filter((m) =>
+    (PAYMENT_METHODS_BY_ACCOUNT_TYPE[accountType] ?? DEFAULT_PAYMENT_METHODS).includes(m.value)
+  )
+  const firstAvailableMethod = availablePaymentMethods[0]
+
+  useEffect(() => {
+    if (firstAvailableMethod && !availablePaymentMethods.some((m) => m.value === paymentMethod)) {
+      setValue('payment_method', firstAvailableMethod.value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset payment method when account changes
+  }, [accountId])
 
   const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
 
   useEffect(() => {
+    Promise.all([api.get('/accounts'), api.get('/categories')])
+      .then(([accountsRes, categoriesRes]) => {
+        const accs = accountsRes.data?.data || accountsRes.data || []
+        const cats = categoriesRes.data?.data || categoriesRes.data || []
+        const list = Array.isArray(accs) ? accs : []
+        setAccounts(list)
+        if (list.length > 0) {
+          setValue('account_id', list[0].id)
+        }
+
+        const incomeCats = (Array.isArray(cats) ? cats : []).filter((c: Category) => c.type === 'income')
+        setCategories(incomeCats)
+        if (incomeCats.length > 0) {
+          setValue('category_id', incomeCats[0].id)
+        }
+      })
+      .catch(() => {
+        setAccounts([])
+        setCategories([])
+      })
+  }, [setValue])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on month/year change
     setLoading(true)
     setError(null)
     Promise.all([
@@ -170,24 +195,33 @@ export default function IncomesPage() {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      await api.post('/incomes', data)
+      const res = await api.post('/incomes', data)
+      success((res.data as { message?: string })?.message || 'Revenu enregistré avec succès.')
       setShowDialog(false)
       reset()
       setRefreshKey((p) => p + 1)
-    } catch (err: any) {
-      setSubmitError(err.response?.data?.message || "Erreur lors de la création du revenu.")
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string } } }
+      const msg = error.response?.data?.message || "Erreur lors de la création du revenu."
+      setSubmitError(msg)
+      toastError(msg)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Supprimer ce revenu ?')) return
+    setDeletingId(id)
     try {
-      await api.delete(`/incomes/${id}`)
+      const res = await api.delete(`/incomes/${id}`)
+      success((res.data as { message?: string })?.message || 'Revenu supprimé avec succès.')
+      setConfirmDeleteId(null)
       setRefreshKey((p) => p + 1)
-    } catch {
-      setIncomes((prev) => prev.filter((inc) => inc.id !== id))
+    } catch (err: unknown) {
+      toastError(getApiErrorMessage(err, 'Erreur lors de la suppression du revenu.'))
+      setConfirmDeleteId(null)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -336,7 +370,7 @@ export default function IncomesPage() {
           className="space-y-3"
         >
           {incomes.map((income, idx) => {
-            const Icon = getCategoryIcon(income.source_type)
+            const Icon = resolveIcon(income.category?.icon)
             return (
               <motion.div
                 key={income.id}
@@ -354,8 +388,8 @@ export default function IncomesPage() {
                       <p className="text-sm font-semibold text-[var(--foreground)] truncate">
                         {income.title}
                       </p>
-                      <Badge variant={getBadgeVariant(income.source_type) as any} className="shrink-0">
-                        {SOURCE_LABELS[income.source_type]}
+                      <Badge variant="outline" className="shrink-0">
+                        {income.category?.name || 'Autre'}
                       </Badge>
                     </div>
                     <div className="flex items-center space-x-3 mt-1 text-xs text-[var(--muted-foreground)]">
@@ -377,10 +411,15 @@ export default function IncomesPage() {
                     +{fmt(income.amount)} {currency}
                   </p>
                   <button
-                    onClick={() => handleDelete(income.id)}
-                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-[var(--muted-foreground)] hover:text-red-500 transition-colors cursor-pointer"
+                    onClick={() => setConfirmDeleteId(income.id)}
+                    disabled={deletingId === income.id}
+                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-[var(--muted-foreground)] hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    {deletingId === income.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </motion.div>
@@ -458,36 +497,56 @@ export default function IncomesPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="source_type">Type de revenu</Label>
+                <Label htmlFor="category_id">Catégorie</Label>
                 <select
-                  id="source_type"
-                  {...register('source_type')}
+                  id="category_id"
+                  {...register('category_id')}
                   className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {SOURCE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                  <option value="">-- Choisir une catégorie --</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="category_id">Catégorie</Label>
-                <Input
-                  id="category_id"
-                  {...register('category_id')}
-                  placeholder="salaire, freelance, business..."
-                />
+                <Label htmlFor="account_id">Compte</Label>
+                <select
+                  id="account_id"
+                  {...register('account_id', {
+                    onChange: () => {
+                      if (firstAvailableMethod) {
+                        setValue('payment_method', firstAvailableMethod.value)
+                      }
+                    },
+                  })}
+                  className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Choisir un compte --</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.currency_code})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="account_id">Compte</Label>
-                <Input
-                  id="account_id"
-                  {...register('account_id')}
-                  placeholder="ID du compte"
-                />
+                <Label htmlFor="payment_method">Moyen de réception</Label>
+                <select
+                  id="payment_method"
+                  {...register('payment_method')}
+                  className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {availablePaymentMethods.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {PAYMENT_METHOD_ICONS[m.value] ?? '❓'} {m.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="md:col-span-2 space-y-1.5">
@@ -557,6 +616,21 @@ export default function IncomesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+        title="Supprimer ce revenu ?"
+        description={
+          deletingIncome
+            ? `« ${deletingIncome.title} » de ${fmt(deletingIncome.amount)} ${currency} sera définitivement supprimé.`
+            : undefined
+        }
+        loading={deletingId === confirmDeleteId}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+      />
     </div>
   )
 }

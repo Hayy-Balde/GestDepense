@@ -17,7 +17,7 @@ import {
 import { api } from '../services/api'
 import type { Subscription, SubscriptionFormData, BillingCycle } from '../types'
 import { useAuthStore } from '../stores/authStore'
-import { BILLING_CYCLES, CURRENCIES } from '../lib/constants'
+import { useConfig } from '../hooks/useConfig'
 import { cn } from '../lib/utils'
 import {
   Dialog,
@@ -38,6 +38,8 @@ import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Separator } from '../components/ui/separator'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 
 const MOCK_SUBSCRIPTIONS: Subscription[] = [
   {
@@ -152,6 +154,7 @@ function SkeletonCard() {
 
 export default function SubscriptionsPage() {
   const { user } = useAuthStore()
+  const { billingCycles, currencies } = useConfig()
   const currency = user?.currency_code || 'GNF'
 
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -160,6 +163,10 @@ export default function SubscriptionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Subscription | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
+
+  const deletingSub = subscriptions.find((s) => s.id === confirmDeleteId)
 
   const {
     register,
@@ -184,25 +191,26 @@ export default function SubscriptionsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
     fetchSubscriptions()
   }, [])
 
-  const bill = (s: Subscription) => s.amount
-  const annual = (s: Subscription) => s.amount * annualMultiplier[s.billing_cycle]
+  const annual = (s: Subscription) => Number(s.amount) * annualMultiplier[s.billing_cycle]
 
   const totalMonthly = subscriptions
     .filter((s) => s.is_active)
     .reduce((sum, s) => {
-      if (s.billing_cycle === 'monthly') return sum + s.amount
-      if (s.billing_cycle === 'yearly') return sum + s.amount / 12
-      if (s.billing_cycle === 'weekly') return sum + s.amount * 52 / 12
-      if (s.billing_cycle === 'quarterly') return sum + s.amount / 3
+      const amt = Number(s.amount)
+      if (s.billing_cycle === 'monthly') return sum + amt
+      if (s.billing_cycle === 'yearly') return sum + amt / 12
+      if (s.billing_cycle === 'weekly') return sum + amt * 52 / 12
+      if (s.billing_cycle === 'quarterly') return sum + amt / 3
       return sum
     }, 0)
 
   const totalAnnual = subscriptions
     .filter((s) => s.is_active)
-    .reduce((sum, s) => sum + annual(s), 0)
+    .reduce((sum, s, ) => sum + annual(s), 0)
 
   const activeCount = subscriptions.filter((s) => s.is_active).length
 
@@ -217,7 +225,7 @@ export default function SubscriptionsPage() {
     return {
       days,
       count: upcomingItems.length,
-      total: upcomingItems.reduce((sum, s) => sum + s.amount, 0),
+      total: upcomingItems.reduce((sum, s) => sum + Number(s.amount), 0),
     }
   })
 
@@ -279,7 +287,7 @@ export default function SubscriptionsPage() {
         : [
             ...subscriptions,
             {
-              id: `mock-${Date.now()}`,
+              id: `mock-${crypto.randomUUID()}`,
               user_id: '',
               account_id: data.account_id || null,
               ...data,
@@ -298,11 +306,33 @@ export default function SubscriptionsPage() {
   const handleDelete = async (id: string) => {
     setDeleting(id)
     try {
-      await api.delete(`/subscriptions/${id}`)
+      const res = await api.delete(`/subscriptions/${id}`)
+      success((res.data as { message?: string })?.message || 'Abonnement supprimé avec succès.')
+      setConfirmDeleteId(null)
       setSubscriptions((prev) => prev.filter((s) => s.id !== id))
-    } catch {
+    } catch (err) {
+      toastError(getApiErrorMessage(err, "Erreur lors de la suppression de l'abonnement."))
+      setConfirmDeleteId(null)
       setSubscriptions((prev) => prev.filter((s) => s.id !== id))
-      setError('Backend non connecté — suppression locale effectuée.')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const handlePay = async (sub: Subscription) => {
+    if (!sub.account_id) {
+      toastError("Cet abonnement n'a pas de compte lié.")
+      return
+    }
+    setDeleting(sub.id)
+    try {
+      const res = await api.post(`/subscriptions/${sub.id}/pay`)
+      success((res.data as { message?: string })?.message || 'Abonnement payé avec succès.')
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.id === sub.id ? { ...s, next_billing_date: new Date().toISOString() } : s))
+      )
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Solde insuffisant ou erreur lors du paiement.'))
     } finally {
       setDeleting(null)
     }
@@ -599,6 +629,14 @@ export default function SubscriptionsPage() {
 
                       <div className="flex items-center gap-1">
                         <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handlePay(sub)}
+                          disabled={deleting === sub.id || !sub.is_active}
+                        >
+                          Payer
+                        </Button>
+                        <Button
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => openEdit(sub)}
@@ -620,7 +658,7 @@ export default function SubscriptionsPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() => handleDelete(sub.id)}
+                          onClick={() => setConfirmDeleteId(sub.id)}
                           disabled={deleting === sub.id}
                           className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                         >
@@ -704,7 +742,7 @@ export default function SubscriptionsPage() {
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   {...register('currency_code')}
                 >
-                  {CURRENCIES.map((c) => (
+                  {currencies.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.flag} {c.code} — {c.symbol}
                     </option>
@@ -721,7 +759,7 @@ export default function SubscriptionsPage() {
                   className="flex h-10 w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   {...register('billing_cycle')}
                 >
-                  {BILLING_CYCLES.map((bc) => (
+                  {billingCycles.map((bc) => (
                     <option key={bc.value} value={bc.value}>
                       {bc.label}
                     </option>
@@ -835,6 +873,21 @@ export default function SubscriptionsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+        title="Supprimer cet abonnement ?"
+        description={
+          deletingSub
+            ? `« ${deletingSub.name} » sera définitivement supprimé.`
+            : undefined
+        }
+        loading={deleting === confirmDeleteId}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+      />
     </div>
   )
 }

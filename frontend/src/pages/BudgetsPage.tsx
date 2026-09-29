@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../services/api'
 import { useMonthStore } from '../stores/monthStore'
 import { useAuthStore } from '../stores/authStore'
-import type { Budget, BudgetFormData } from '../types/index'
+import type { Budget, BudgetFormData, BudgetByCategory, BudgetCategoryUsage } from '../types/index'
+import type { Expense } from '../types/expense'
 import {
   PiggyBank,
   Plus,
@@ -11,10 +12,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Receipt,
+  CalendarDays,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { useForm } from 'react-hook-form'
-import { MONTHS, EXPENSE_CATEGORIES } from '../lib/constants'
+import { useForm, useWatch } from 'react-hook-form'
+import { MONTHS } from '../lib/constants'
+import { useConfig, findCategoryBySlug } from '../hooks/useConfig'
 import { cn } from '../lib/utils'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -31,78 +35,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../components/ui/dialog'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 
-const MOCK_BUDGET: Budget = {
-  id: 'mock-budget-1',
-  user_id: 'mock',
-  month: new Date().getMonth() + 1,
-  year: new Date().getFullYear(),
-  total_budget: 1_200_000,
-  notes: 'Budget du mois en cours (données mock)',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-  total_spent: 890_000,
-  remaining: 310_000,
-  categories: [
-    {
-      id: 'mock-cat-1',
-      budget_id: 'mock-budget-1',
-      category_id: 'alimentation',
-      allocated_amount: 400_000,
-      spent_amount: 320_000,
-      category: { id: 'alimentation', name: 'Alimentation', icon: 'Utensils', color: '#F97316' },
-      remaining: 80_000,
-      percentage_used: 80,
-    },
-    {
-      id: 'mock-cat-2',
-      budget_id: 'mock-budget-1',
-      category_id: 'transport',
-      allocated_amount: 200_000,
-      spent_amount: 180_000,
-      category: { id: 'transport', name: 'Transport', icon: 'Car', color: '#3B82F6' },
-      remaining: 20_000,
-      percentage_used: 90,
-    },
-    {
-      id: 'mock-cat-3',
-      budget_id: 'mock-budget-1',
-      category_id: 'logement',
-      allocated_amount: 350_000,
-      spent_amount: 200_000,
-      category: { id: 'logement', name: 'Logement', icon: 'Home', color: '#8B5CF6' },
-      remaining: 150_000,
-      percentage_used: 57.1,
-    },
-    {
-      id: 'mock-cat-4',
-      budget_id: 'mock-budget-1',
-      category_id: 'loisirs',
-      allocated_amount: 150_000,
-      spent_amount: 190_000,
-      category: { id: 'loisirs', name: 'Loisirs', icon: 'Gamepad2', color: '#EC4899' },
-      remaining: -40_000,
-      percentage_used: 126.7,
-    },
-    {
-      id: 'mock-cat-5',
-      budget_id: 'mock-budget-1',
-      category_id: 'sante',
-      allocated_amount: 100_000,
-      spent_amount: 0,
-      category: { id: 'sante', name: 'Santé', icon: 'Heart', color: '#EF4444' },
-      remaining: 100_000,
-      percentage_used: 0,
-    },
-  ],
-}
-
-const categoryKeys = Object.keys(EXPENSE_CATEGORIES)
-
-function getStatusInfo(percentage: number): { label: string; variant: 'success' | 'warning' | 'destructive' } {
-  if (percentage < 80) return { label: 'Dans les clous', variant: 'success' }
-  if (percentage <= 100) return { label: 'Dépassement', variant: 'warning' }
-  return { label: 'Restant', variant: 'destructive' }
+function getStatusInfo(percentage: number, remaining: number): { label: string; variant: 'success' | 'warning' | 'destructive' } {
+  if (remaining < 0) return { label: 'Dépassement', variant: 'destructive' }
+  if (percentage >= 100) return { label: 'Budget atteint', variant: 'warning' }
+  if (percentage >= 80) return { label: 'Presque atteint', variant: 'warning' }
+  return { label: 'Dans les clous', variant: 'success' }
 }
 
 function getProgressColor(percentage: number): string {
@@ -111,16 +50,35 @@ function getProgressColor(percentage: number): string {
   return 'bg-red-500'
 }
 
+const EMPTY_BY_CATEGORY: BudgetByCategory = {
+  month: 0,
+  year: 0,
+  has_budget: false,
+  total_allocated: 0,
+  total_spent: 0,
+  total_remaining: 0,
+  categories: [],
+}
+
 export default function BudgetsPage() {
   const { currentMonth, currentYear, goPrev, goNext } = useMonthStore()
   const { user } = useAuthStore()
   const currency = user?.currency_code || 'GNF'
+  const { expenseCategories } = useConfig()
+  const categoryKeys = Object.keys(expenseCategories)
 
+  const [byCategory, setByCategory] = useState<BudgetByCategory>(EMPTY_BY_CATEGORY)
   const [budget, setBudget] = useState<Budget | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Modal de détails d'une catégorie
+  const [detailCat, setDetailCat] = useState<BudgetCategoryUsage | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailExpenses, setDetailExpenses] = useState<Expense[]>([])
+  const { success, error: toastError } = useToastStore()
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
@@ -132,7 +90,7 @@ export default function BudgetsPage() {
   }
 
   const form = useForm({ defaultValues: defaultFormValues })
-  const watchedValues = form.watch()
+  const watchedValues = useWatch({ control: form.control })
   const calculatedTotal = categoryKeys.reduce(
     (sum, key) => sum + (Number(watchedValues[`cat_${key}`]) || 0),
     0,
@@ -145,7 +103,7 @@ export default function BudgetsPage() {
         notes: budget.notes || '',
       }
       categoryKeys.forEach((key) => {
-        const found = budget.categories.find((c) => c.category_id === key)
+        const found = (budget.categories || []).find((c) => c.category_id === key)
         prefill[`cat_${key}`] = found?.allocated_amount || 0
       })
       form.reset(prefill)
@@ -155,7 +113,7 @@ export default function BudgetsPage() {
     setDialogOpen(true)
   }
 
-  const onSubmit = (data: Record<string, any>) => {
+  const onSubmit = (data: Record<string, unknown>) => {
     const categoryEntries = categoryKeys
       .filter((key) => (Number(data[`cat_${key}`]) || 0) > 0)
       .map((key) => ({
@@ -163,13 +121,13 @@ export default function BudgetsPage() {
         allocated_amount: Number(data[`cat_${key}`]) || 0,
       }))
 
-    const total = categoryEntries.reduce((sum, c) => sum + c.allocated_amount, 0)
+    const total = categoryEntries.reduce((sum, c) => sum + Number(c.allocated_amount), 0)
 
     const payload: BudgetFormData = {
       month: currentMonth,
       year: currentYear,
       total_budget: total,
-      notes: data.notes || '',
+      notes: String(data.notes ?? ''),
       categories: categoryEntries,
     }
 
@@ -177,10 +135,12 @@ export default function BudgetsPage() {
     api
       .post('/budgets', payload)
       .then((res) => {
-        setBudget(res.data?.data || res.data)
+        success((res.data as { message?: string })?.message || 'Budget enregistré avec succès.')
+        fetchBudget()
         setDialogOpen(false)
       })
-      .catch(() => {
+      .catch((err) => {
+        toastError(getApiErrorMessage(err, 'Impossible de sauvegarder le budget.'))
         const existingBudget = budget
         const newBudget: Budget = {
           id: existingBudget?.id || `local-${Date.now()}`,
@@ -188,14 +148,14 @@ export default function BudgetsPage() {
           month: currentMonth,
           year: currentYear,
           total_budget: total,
-          notes: data.notes || null,
+          notes: data.notes ? String(data.notes) : null,
           created_at: existingBudget?.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
           total_spent: existingBudget?.total_spent || 0,
           remaining: total - (existingBudget?.total_spent || 0),
           categories: categoryEntries.map((c, i) => {
             const existingCat = existingBudget?.categories.find((bc) => bc.category_id === c.category_id)
-            const catConfig = EXPENSE_CATEGORIES[c.category_id]
+            const catConfig = findCategoryBySlug(expenseCategories, c.category_id)
             return {
               id: existingCat?.id || `local-cat-${i}`,
               budget_id: existingBudget?.id || `local-${Date.now()}`,
@@ -225,31 +185,45 @@ export default function BudgetsPage() {
   const fetchBudget = () => {
     setLoading(true)
     setError(null)
-    api
-      .get('/budgets', { params: { month: currentMonth, year: currentYear } })
-      .then((res) => {
-        setBudget(res.data?.data || null)
+    Promise.all([
+      api.get('/budgets/by-category', { params: { month: currentMonth, year: currentYear } }),
+      api.get('/budgets', { params: { month: currentMonth, year: currentYear } }),
+    ])
+      .then(([byCatRes, budgetRes]) => {
+        setByCategory(byCatRes.data || EMPTY_BY_CATEGORY)
+        setBudget(budgetRes.data || null)
       })
       .catch(() => {
-        const now = new Date()
-        if (currentMonth === now.getMonth() + 1 && currentYear === now.getFullYear()) {
-          setBudget(MOCK_BUDGET)
-          setError('Backend non connecté — données d\'exemple affichées.')
-        } else {
-          setBudget(null)
-          setError(null)
-        }
+        setByCategory(EMPTY_BY_CATEGORY)
+        setBudget(null)
+        setError('Impossible de charger les budgets pour ce mois.')
       })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on month/year change
     fetchBudget()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when month/year change
   }, [currentMonth, currentYear])
 
+  const openDetail = (cat: BudgetCategoryUsage) => {
+    setDetailCat(cat)
+    setDetailExpenses([])
+    setDetailLoading(true)
+    api
+      .get('/expenses', { params: { category_id: cat.category.id, month: currentMonth, year: currentYear } })
+      .then((res) => {
+        const rows = res.data?.data || res.data || []
+        setDetailExpenses(rows)
+      })
+      .catch(() => setDetailExpenses([]))
+      .finally(() => setDetailLoading(false))
+  }
+
   const overviewPercentage =
-    budget && budget.total_budget > 0
-      ? Math.round((budget.total_spent / budget.total_budget) * 100)
+    byCategory.total_allocated > 0
+      ? Math.round((byCategory.total_spent / byCategory.total_allocated) * 100)
       : 0
 
   return (
@@ -306,27 +280,6 @@ export default function BudgetsPage() {
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-[var(--primary)]" />
         </div>
-      ) : !budget ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="flex flex-col items-center justify-center gap-4 py-20"
-        >
-          <div className="p-4 rounded-full bg-purple-500/10">
-            <PiggyBank className="w-10 h-10 text-purple-500" />
-          </div>
-          <p className="text-lg font-semibold text-[var(--foreground)]">
-            Aucun budget défini pour ce mois
-          </p>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Créez un budget pour mieux suivre vos dépenses par catégorie.
-          </p>
-          <Button onClick={openDialog} className="mt-2">
-            <Plus className="w-4 h-4 mr-1.5" />
-            Créer un budget
-          </Button>
-        </motion.div>
       ) : (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -337,10 +290,10 @@ export default function BudgetsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                Aperçu du budget — {MONTHS[currentMonth - 1]} {currentYear}
+                Aperçu du mois — {MONTHS[currentMonth - 1]} {currentYear}
               </CardTitle>
               <CardDescription>
-                Synthèse globale de votre budget mensuel
+                Synthèse des catégories planifiées et de l'utilisation réelle
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -348,13 +301,13 @@ export default function BudgetsPage() {
                 <div>
                   <p className="text-sm text-[var(--muted-foreground)]">Budget total</p>
                   <p className="text-2xl font-bold text-[var(--foreground)]">
-                    {fmt(budget.total_budget)} {currency}
+                    {fmt(byCategory.total_allocated)} {currency}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-[var(--muted-foreground)]">Dépensé</p>
                   <p className="text-2xl font-bold text-red-500">
-                    {fmt(budget.total_spent)} {currency}
+                    {fmt(byCategory.total_spent)} {currency}
                   </p>
                 </div>
                 <div>
@@ -362,10 +315,10 @@ export default function BudgetsPage() {
                   <p
                     className={cn(
                       'text-2xl font-bold',
-                      budget.remaining >= 0 ? 'text-green-500' : 'text-red-500',
+                      byCategory.total_remaining >= 0 ? 'text-green-500' : 'text-red-500',
                     )}
                   >
-                    {fmt(budget.remaining)} {currency}
+                    {fmt(byCategory.total_remaining)} {currency}
                   </p>
                 </div>
               </div>
@@ -384,75 +337,125 @@ export default function BudgetsPage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {budget.categories.map((cat, i) => {
-              const catConfig = EXPENSE_CATEGORIES[cat.category_id]
-              const displayName = cat.category?.name || catConfig?.name || cat.category_id
-              const displayColor = cat.category?.color || catConfig?.color || '#6B7280'
-              const Icon = catConfig?.icon
-              const statusInfo = getStatusInfo(cat.percentage_used)
+          {byCategory.categories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-16">
+              <div className="p-4 rounded-full bg-purple-500/10">
+                <PiggyBank className="w-10 h-10 text-purple-500" />
+              </div>
+              <p className="text-lg font-semibold text-[var(--foreground)]">
+                Aucune catégorie à afficher
+              </p>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Configurez vos catégories de dépenses pour suivre ce mois.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-[var(--foreground)]">
+                  Catégories — {MONTHS[currentMonth - 1]} {currentYear}
+                </h2>
+                <span className="text-xs text-[var(--muted-foreground)]">
+                  Cliquez sur une catégorie pour voir ses dépenses
+                </span>
+              </div>
 
-              return (
-                <motion.div
-                  key={cat.id || i}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: i * 0.05 }}
-                >
-                  <Card>
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full shrink-0"
-                            style={{ backgroundColor: displayColor }}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {byCategory.categories.map((cat, i) => {
+                  const catConfig = findCategoryBySlug(expenseCategories, cat.category.id) ||
+                    findCategoryBySlug(expenseCategories, cat.category.name)
+                  const displayColor = cat.category.color || catConfig?.color || '#6B7280'
+                  const statusInfo = cat.is_planned
+                    ? getStatusInfo(cat.percentage_used, cat.remaining)
+                    : null
+
+                  return (
+                    <motion.button
+                      key={cat.category.id}
+                      type="button"
+                      onClick={() => openDetail(cat)}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: i * 0.05 }}
+                      className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-xl"
+                    >
+                      <Card className="hover:border-[var(--primary)]/40 hover:shadow-md transition-all h-full">
+                        <CardContent className="p-5">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: displayColor }}
+                              />
+                              <span className="text-sm font-semibold text-[var(--foreground)]">
+                                {cat.category.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {cat.transaction_count > 0 && (
+                                <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  {cat.transaction_count}
+                                </span>
+                              )}
+                              {cat.is_planned ? (
+                                <Badge variant={statusInfo!.variant}>{statusInfo!.label}</Badge>
+                              ) : (
+                                <Badge variant="secondary">Non planifiée</Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
+                            <div>
+                              <p className="text-[var(--muted-foreground)] text-xs">
+                                {cat.is_planned ? 'Alloué' : 'Planifié'}
+                              </p>
+                              <p className="font-semibold text-[var(--foreground)]">
+                                {cat.is_planned
+                                  ? `${fmt(cat.allocated_amount)} ${currency}`
+                                  : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[var(--muted-foreground)] text-xs">Dépensé</p>
+                              <p className={cn('font-semibold', cat.spent_amount > 0 ? 'text-red-500' : 'text-[var(--foreground)]')}>
+                                {fmt(cat.spent_amount)} {currency}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[var(--muted-foreground)] text-xs">Restant</p>
+                              <p
+                                className={cn(
+                                  'font-semibold',
+                                  !cat.is_planned
+                                    ? 'text-[var(--muted-foreground)]'
+                                    : cat.remaining >= 0
+                                      ? 'text-green-500'
+                                      : 'text-red-500',
+                                )}
+                              >
+                                {cat.is_planned
+                                  ? `${fmt(cat.remaining)} ${currency}`
+                                  : cat.spent_amount > 0
+                                    ? `-${fmt(cat.spent_amount)}`
+                                    : '—'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <Progress
+                            value={cat.is_planned ? Math.min(cat.percentage_used, 100) : Math.min(cat.spent_amount > 0 ? 100 : 0, 100)}
+                            indicatorClassName={cat.is_planned ? getProgressColor(cat.percentage_used) : 'bg-[var(--muted)]'}
                           />
-                          {Icon && (
-                            <Icon className="w-4 h-4 shrink-0" style={{ color: displayColor }} />
-                          )}
-                          <span className="text-sm font-semibold text-[var(--foreground)]">
-                            {displayName}
-                          </span>
-                        </div>
-                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
-                        <div>
-                          <p className="text-[var(--muted-foreground)] text-xs">Alloué</p>
-                          <p className="font-semibold text-[var(--foreground)]">
-                            {fmt(cat.allocated_amount)} {currency}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[var(--muted-foreground)] text-xs">Dépensé</p>
-                          <p className="font-semibold text-red-500">
-                            {fmt(cat.spent_amount)} {currency}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[var(--muted-foreground)] text-xs">Restant</p>
-                          <p
-                            className={cn(
-                              'font-semibold',
-                              cat.remaining >= 0 ? 'text-green-500' : 'text-red-500',
-                            )}
-                          >
-                            {fmt(cat.remaining)} {currency}
-                          </p>
-                        </div>
-                      </div>
-
-                      <Progress
-                        value={Math.min(cat.percentage_used, 100)}
-                        indicatorClassName={getProgressColor(cat.percentage_used)}
-                      />
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )
-            })}
-          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.button>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </motion.div>
       )}
 
@@ -488,7 +491,7 @@ export default function BudgetsPage() {
               </p>
               <div className="space-y-3">
                 {categoryKeys.map((key) => {
-                  const catConfig = EXPENSE_CATEGORIES[key]!
+                  const catConfig = expenseCategories[key]!
                   const Icon = catConfig.icon
                   return (
                     <div key={key} className="flex items-center gap-3">
@@ -506,7 +509,7 @@ export default function BudgetsPage() {
                         <Input
                           type="number"
                           min={0}
-                          step={1000}
+                          // step={1}
                           placeholder="0"
                           {...form.register(`cat_${key}`, { valueAsNumber: true })}
                         />
@@ -550,6 +553,63 @@ export default function BudgetsPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal détail catégorie — listes des transactions */}
+      <Dialog open={!!detailCat} onOpenChange={(o) => { if (!o) setDetailCat(null) }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center space-x-2">
+              <span
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: detailCat?.category.color || '#6B7280' }}
+              />
+              <span>{detailCat?.category.name}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Dépenses de {MONTHS[currentMonth - 1]} {currentYear}
+              {detailCat && (
+                <> — {fmt(detailCat.spent_amount)} {currency} au total</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+            </div>
+          ) : detailExpenses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-[var(--muted-foreground)]">
+              <Receipt className="w-8 h-8" />
+              <p className="text-sm">Aucune dépense pour cette catégorie ce mois-ci</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              {detailExpenses.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-[var(--destructive)]/10 text-[var(--destructive)] flex items-center justify-center shrink-0">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--foreground)] truncate">
+                      {e.title}
+                    </p>
+                    <p className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3" />
+                      {new Date(e.date).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-red-500 shrink-0">
+                    -{fmt(Number(e.amount))} {e.currency_code}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

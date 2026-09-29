@@ -11,6 +11,7 @@ import { api } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { cn } from '../lib/utils'
 import type { Saving, SavingFormData } from '../types'
+import type { Account } from '../types/account'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../components/ui/dialog'
@@ -23,11 +24,14 @@ import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToastStore, getApiErrorMessage } from '../stores/toastStore'
 
 const MOCK_SAVINGS: Saving[] = [
   {
     id: 'mock-1',
     user_id: '',
+    account_id: null,
     name: 'Voyage au Maroc',
     target_amount: 2000000,
     current_amount: 750000,
@@ -49,6 +53,7 @@ const MOCK_SAVINGS: Saving[] = [
   {
     id: 'mock-2',
     user_id: '',
+    account_id: null,
     name: 'Nouvel Ordinateur',
     target_amount: 4000000,
     current_amount: 4000000,
@@ -69,6 +74,7 @@ const MOCK_SAVINGS: Saving[] = [
   {
     id: 'mock-3',
     user_id: '',
+    account_id: null,
     name: "Fonds d'Urgence",
     target_amount: 1000000,
     current_amount: 300000,
@@ -114,6 +120,7 @@ export default function SavingsPage() {
   const currency = user?.currency_code || 'GNF'
 
   const [savings, setSavings] = useState<Saving[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -121,6 +128,11 @@ export default function SavingsPage() {
   const [depositTarget, setDepositTarget] = useState<Saving | null>(null)
   const [withdrawTarget, setWithdrawTarget] = useState<Saving | null>(null)
   const [expandedTx, setExpandedTx] = useState<Set<string>>(new Set())
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const { success, error: toastError } = useToastStore()
+
+  const deletingSaving = savings.find((s) => s.id === confirmDeleteId)
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0 }).format(n ?? 0)
@@ -132,6 +144,7 @@ export default function SavingsPage() {
       deadline: '',
       icon: '🏆',
       color: '#EC4899',
+      account_id: '',
     },
   })
 
@@ -143,6 +156,7 @@ export default function SavingsPage() {
       deadline: '',
       icon: '🏆',
       color: '#EC4899',
+      account_id: accounts[0]?.id ?? '',
       auto_save_amount: undefined,
       auto_save_frequency: '',
     })
@@ -157,6 +171,7 @@ export default function SavingsPage() {
       deadline: saving.deadline ? saving.deadline.split('T')[0] : '',
       icon: saving.icon,
       color: saving.color,
+      account_id: saving.account_id ?? accounts[0]?.id ?? '',
       auto_save_amount: saving.auto_save_amount ?? undefined,
       auto_save_frequency: saving.auto_save_frequency ?? '',
     })
@@ -182,14 +197,26 @@ export default function SavingsPage() {
       .finally(() => setLoading(false))
   }
 
+  const fetchAccounts = () => {
+    api.get('/accounts')
+      .then((res) => {
+        const list = res.data?.data || res.data || []
+        setAccounts(Array.isArray(list) ? list : [])
+      })
+      .catch(() => setAccounts([]))
+  }
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
     fetchSavings()
+    fetchAccounts()
   }, [])
 
   const onSubmit = async (data: SavingFormData) => {
     try {
       const payload = { ...data }
       if (!payload.deadline) delete payload.deadline
+      if (!payload.account_id) delete payload.account_id
       if (!payload.auto_save_amount) {
         delete payload.auto_save_amount
         delete payload.auto_save_frequency
@@ -207,32 +234,41 @@ export default function SavingsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer cet objectif d'\u00e9pargne ?")) return
+    setDeletingId(id)
     try {
-      await api.delete(`/savings/${id}`)
+      const res = await api.delete(`/savings/${id}`)
+      success((res.data as { message?: string })?.message || "Objectif d'épargne supprimé avec succès.")
+      setConfirmDeleteId(null)
       fetchSavings()
-    } catch {
-      setError('Erreur lors de la suppression.')
+    } catch (err) {
+      toastError(getApiErrorMessage(err, "Erreur lors de la suppression de l'objectif."))
+      setConfirmDeleteId(null)
+    } finally {
+      setDeletingId(null)
     }
   }
 
-  const handleDeposit = async (saving: Saving, amount: number, note?: string) => {
+  const handleDeposit = async (saving: Saving, amount: number, sourceAccountId: string, note?: string) => {
     try {
-      await api.post(`/savings/${saving.id}/deposit`, { amount, note: note || null })
+      const res = await api.post(`/savings/${saving.id}/deposit`, { amount, source_account_id: sourceAccountId, note: note || null })
+      success((res.data as { message?: string })?.message || 'Dépôt effectué avec succès.')
       setDepositTarget(null)
       fetchSavings()
-    } catch {
-      setError('Erreur lors du d\u00e9p\u00f4t.')
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Erreur lors du dépôt.'))
+      setDepositTarget(null)
     }
   }
 
-  const handleWithdraw = async (saving: Saving, amount: number, note?: string) => {
+  const handleWithdraw = async (saving: Saving, amount: number, sourceAccountId: string, note?: string) => {
     try {
-      await api.post(`/savings/${saving.id}/withdraw`, { amount, note: note || null })
+      const res = await api.post(`/savings/${saving.id}/withdraw`, { amount, source_account_id: sourceAccountId, note: note || null })
+      success((res.data as { message?: string })?.message || 'Retrait effectué avec succès.')
       setWithdrawTarget(null)
       fetchSavings()
-    } catch {
-      setError('Erreur lors du retrait.')
+    } catch (err) {
+      toastError(getApiErrorMessage(err, 'Erreur lors du retrait.'))
+      setWithdrawTarget(null)
     }
   }
 
@@ -245,8 +281,8 @@ export default function SavingsPage() {
     })
   }
 
-  const totalSaved = savings.reduce((sum, s) => sum + s.current_amount, 0)
-  const totalTargets = savings.reduce((sum, s) => sum + s.target_amount, 0)
+  const totalSaved = savings.reduce((sum, s) => sum + Number(s.current_amount), 0)
+  const totalTargets = savings.reduce((sum, s) => sum + Number(s.target_amount), 0)
   const overallRate = totalTargets > 0 ? Math.round((totalSaved / totalTargets) * 100) : 0
 
   return (
@@ -257,10 +293,10 @@ export default function SavingsPage() {
             <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-500">
               <PiggyBank className="w-5 h-5" />
             </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--foreground)]">\u00c9pargnes</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--foreground)]">Epargnes</h1>
           </div>
           <p className="text-sm text-[var(--muted-foreground)] mt-1">
-            D\u00e9finissez et suivez vos objectifs d'\u00e9pargne.
+            Définissez et suivez vos objectifs d'épargne.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -278,9 +314,9 @@ export default function SavingsPage() {
       {!loading && savings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { label: 'Total \u00e9pargn\u00e9', value: totalSaved, icon: PiggyBank, color: 'text-pink-500', bg: 'bg-pink-500/10' },
+            { label: 'Total épargné', value: totalSaved, icon: PiggyBank, color: 'text-pink-500', bg: 'bg-pink-500/10' },
             { label: 'Objectifs totaux', value: totalTargets, icon: Target, color: 'text-violet-500', bg: 'bg-violet-500/10' },
-            { label: "Taux d'\u00e9pargne global", value: overallRate, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', suffix: '%' },
+            { label: "Taux d'épargne global", value: overallRate, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', suffix: '%' },
           ].map((item) => (
             <Card key={item.label}>
               <CardContent className="p-4 flex items-center justify-between">
@@ -319,8 +355,8 @@ export default function SavingsPage() {
           <div className="p-4 rounded-full bg-pink-500/10">
             <PiggyBank className="w-10 h-10 text-pink-500" />
           </div>
-          <p className="text-lg font-semibold text-[var(--foreground)]">Aucun objectif d'\u00e9pargne</p>
-          <p className="text-sm text-[var(--muted-foreground)]">Cr\u00e9ez votre premier objectif pour commencer \u00e0 \u00e9pargner.</p>
+          <p className="text-lg font-semibold text-[var(--foreground)]">Aucun objectif d'épargne</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Créez votre premier objectif pour commencer à épargner.</p>
           <Button onClick={openCreate} className="mt-2">
             <Plus className="w-4 h-4 mr-1.5" />
             Nouvel Objectif
@@ -355,8 +391,14 @@ export default function SavingsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {saving.account && (
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Compte : {saving.account.name}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-[var(--muted-foreground)]">\u00c9pargn\u00e9</span>
+                    <span className="text-sm text-[var(--muted-foreground)]">épargné</span>
                     <span className="text-lg font-bold">{fmt(saving.current_amount)} {currency}</span>
                   </div>
 
@@ -371,7 +413,7 @@ export default function SavingsPage() {
                   {saving.deadline && (
                     <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
                       <Clock className="w-3.5 h-3.5" />
-                      <span>\u00c9ch\u00e9ance : {formatDistanceToNow(new Date(saving.deadline), { locale: fr, addSuffix: true })}</span>
+                      <span>échéance : {formatDistanceToNow(new Date(saving.deadline), { locale: fr, addSuffix: true })}</span>
                     </div>
                   )}
 
@@ -379,7 +421,7 @@ export default function SavingsPage() {
                     <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] bg-[var(--secondary)]/30 rounded-lg px-2.5 py-1.5">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
                       <span>
-                        \u00c9pargne automatique : {fmt(saving.auto_save_amount)} {currency}
+                        épargne automatique : {fmt(saving.auto_save_amount)} {currency}
                         {saving.auto_save_frequency && FREQUENCY_LABELS[saving.auto_save_frequency]
                           ? ` /${FREQUENCY_LABELS[saving.auto_save_frequency]}`
                           : ` /${saving.auto_save_frequency}`}
@@ -396,7 +438,7 @@ export default function SavingsPage() {
                         onClick={() => setDepositTarget(saving)}
                       >
                         <ArrowDown className="w-3.5 h-3.5 mr-1" />
-                        D\u00e9poser
+                        Déposer
                       </Button>
                       <Button
                         variant="secondary"
@@ -423,10 +465,20 @@ export default function SavingsPage() {
                       variant="ghost"
                       size="sm"
                       className="text-red-500 hover:text-red-600"
-                      onClick={() => handleDelete(saving.id)}
+                      onClick={() => setConfirmDeleteId(saving.id)}
+                      disabled={deletingId === saving.id}
                     >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" />
-                      Supprimer
+                      {deletingId === saving.id ? (
+                        <span className="inline-flex items-center">
+                          <span className="w-3.5 h-3.5 mr-1 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+                          Suppression...
+                        </span>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          Supprimer
+                        </>
+                      )}
                     </Button>
                   </div>
 
@@ -451,7 +503,7 @@ export default function SavingsPage() {
                                   <ArrowUp className="w-3 h-3 text-red-500" />
                                 )}
                                 <span className="text-[var(--muted-foreground)]">
-                                  {tx.note || (tx.type === 'deposit' ? 'D\u00e9p\u00f4t' : 'Retrait')}
+                                  {tx.note || (tx.type === 'deposit' ? 'Dépô' : 'Retrait')}
                                 </span>
                               </div>
                               <span className={tx.type === 'deposit' ? 'text-emerald-500 font-medium' : 'text-red-500 font-medium'}>
@@ -478,8 +530,8 @@ export default function SavingsPage() {
             </DialogTitle>
             <DialogDescription className="text-xs">
               {editingSaving
-                ? "Modifiez les d\u00e9tails de votre objectif d'\u00e9pargne."
-                : "Cr\u00e9ez un nouvel objectif pour suivre votre \u00e9pargne."}
+                ? "Modifiez les détails de votre objectif d'épargne."
+                : "Créez un nouvel objectif pour suivre votre épargne."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
@@ -493,18 +545,42 @@ export default function SavingsPage() {
               <Input
                 id="target_amount"
                 type="number"
+                disabled={!!editingSaving}
                 {...form.register('target_amount', { required: true, min: 1, valueAsNumber: true })}
                 placeholder="Ex: 1000000"
               />
               {form.formState.errors.target_amount && <p className="text-xs text-red-500">Montant valide requis</p>}
+              {editingSaving && (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Le montant cible ne peut plus être modifié. Utilisez Déposer / Retirer pour faire évoluer l'épargne.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="deadline">Date d'\u00e9ch\u00e9ance (optionnelle)</Label>
+              <Label htmlFor="account_id">Compte source</Label>
+              <select
+                id="account_id"
+                {...form.register('account_id', { required: true })}
+                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">-- Choisir un compte --</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.currency_code})
+                  </option>
+                ))}
+              </select>
+              {form.formState.errors.account_id && (
+                <p className="text-xs text-red-500">Compte source requis</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deadline">Date d'échéance (optionnelle)</Label>
               <Input id="deadline" type="date" {...form.register('deadline')} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="icon">Ic\u00f4ne</Label>
+                <Label htmlFor="icon">Icône</Label>
                 <Input id="icon" {...form.register('icon')} placeholder="🏆" />
               </div>
               <div className="space-y-2">
@@ -514,7 +590,7 @@ export default function SavingsPage() {
             </div>
             <Separator />
             <div className="space-y-2">
-              <Label htmlFor="auto_save_amount">\u00c9pargne automatique (optionnelle)</Label>
+              <Label htmlFor="auto_save_amount">épargne automatique (optionnelle)</Label>
               <Input
                 id="auto_save_amount"
                 type="number"
@@ -523,13 +599,13 @@ export default function SavingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="auto_save_frequency">Fr\u00e9quence</Label>
+              <Label htmlFor="auto_save_frequency">Fréquence</Label>
               <select
                 id="auto_save_frequency"
                 {...form.register('auto_save_frequency')}
                 className="flex h-10 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
               >
-                <option value="">S\u00e9lectionner...</option>
+                <option value="">Sélectionner...</option>
                 <option value="hebdomadaire">Hebdomadaire</option>
                 <option value="mensuel">Mensuel</option>
                 <option value="trimestriel">Trimestriel</option>
@@ -541,7 +617,7 @@ export default function SavingsPage() {
                 Annuler
               </Button>
               <Button variant="primary" type="submit">
-                {editingSaving ? 'Enregistrer' : 'Cr\u00e9er'}
+                {editingSaving ? 'Enregistrer' : 'Créer'}
               </Button>
             </div>
           </form>
@@ -551,6 +627,7 @@ export default function SavingsPage() {
       <TransactionDialog
         saving={depositTarget}
         type="deposit"
+        accounts={accounts}
         onClose={() => setDepositTarget(null)}
         onConfirm={handleDeposit}
         fmt={fmt}
@@ -560,10 +637,26 @@ export default function SavingsPage() {
       <TransactionDialog
         saving={withdrawTarget}
         type="withdrawal"
+        accounts={accounts}
         onClose={() => setWithdrawTarget(null)}
         onConfirm={handleWithdraw}
         fmt={fmt}
         currency={currency}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+        title="Supprimer cet objectif d'épargne ?"
+        description={
+          deletingSaving
+            ? `« ${deletingSaving.name} » et tous ses mouvements seront définitivement supprimés.`
+            : undefined
+        }
+        loading={deletingId === confirmDeleteId}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
       />
     </div>
   )
@@ -572,6 +665,7 @@ export default function SavingsPage() {
 function TransactionDialog({
   saving,
   type,
+  accounts,
   onClose,
   onConfirm,
   fmt,
@@ -579,19 +673,23 @@ function TransactionDialog({
 }: {
   saving: Saving | null
   type: 'deposit' | 'withdrawal'
+  accounts: Account[]
   onClose: () => void
-  onConfirm: (saving: Saving, amount: number, note?: string) => void
+  onConfirm: (saving: Saving, amount: number, sourceAccountId: string, note?: string) => void
   fmt: (n: number) => string
   currency: string
 }) {
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [sourceAccountId, setSourceAccountId] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (saving) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset fields when type changes
       setAmount('')
       setNote('')
+      setSourceAccountId(saving.account_id ?? accounts[0]?.id ?? '')
     }
   }, [saving])
 
@@ -600,9 +698,10 @@ function TransactionDialog({
   const handleSubmit = async () => {
     const parsed = parseInt(amount, 10)
     if (!amount || isNaN(parsed) || parsed <= 0) return
+    if (!sourceAccountId) return
     setSubmitting(true)
     try {
-      await onConfirm(saving!, parsed, note || undefined)
+      await onConfirm(saving!, parsed, sourceAccountId, note || undefined)
     } finally {
       setSubmitting(false)
     }
@@ -617,14 +716,29 @@ function TransactionDialog({
           </DialogTitle>
           <DialogDescription className="text-xs">
             {isDeposit
-              ? "Ajoutez des fonds \u00e0 cet objectif d'\u00e9pargne."
-              : "Retirez des fonds de cet objectif d'\u00e9pargne."}
+              ? "Ajoutez des fonds à cet objectif d'épargne."
+              : "Retirez des fonds de cet objectif d'épargne."}
           </DialogDescription>
         </DialogHeader>
         {saving && (
           <div className="space-y-4 mt-2">
             <div className="text-sm text-[var(--muted-foreground)]">
               Solde actuel : <span className="font-semibold text-[var(--foreground)]">{fmt(saving.current_amount)} {currency}</span>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tx-account">Compte {isDeposit ? 'source' : 'de destination'}</Label>
+              <select
+                id="tx-account"
+                value={sourceAccountId}
+                onChange={(e) => setSourceAccountId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+              >
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.currency_code})
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="tx-amount">Montant</Label>
@@ -655,9 +769,9 @@ function TransactionDialog({
                 variant={isDeposit ? 'primary' : 'secondary'}
                 type="button"
                 onClick={handleSubmit}
-                disabled={!amount || submitting}
+                disabled={!amount || !sourceAccountId || submitting}
               >
-                {submitting ? '...' : isDeposit ? 'D\u00e9poser' : 'Retirer'}
+                {submitting ? '...' : isDeposit ? 'Déposer' : 'Retirer'}
               </Button>
             </div>
           </div>

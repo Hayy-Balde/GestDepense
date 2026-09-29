@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ExpenseList from '../components/expenses/ExpenseList'
 import ExpenseForm from '../components/expenses/ExpenseForm'
+import ExpenseBilan from '../components/expenses/ExpenseBilan'
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,7 @@ export default function ExpensesPage() {
         {/* Create Button */}
         <button 
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center space-x-2 px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-600 rounded-lg shadow-sm transition-all duration-200 cursor-pointer"
+          className="inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Nouvelle Dépense</span>
@@ -65,6 +66,9 @@ export default function ExpensesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bilan mensuel */}
+      <ExpenseBilan />
 
       {/* Dynamic Filtered List Table */}
       <ExpenseList key={refreshKey} />
