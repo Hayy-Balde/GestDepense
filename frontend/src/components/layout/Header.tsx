@@ -144,7 +144,7 @@ export function Header() {
     results.expenses.length + results.incomes.length + results.accounts.length + results.caisses.length
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 border-b border-[var(--border)] bg-[var(--card)]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 lg:px-8 border-b border-[var(--border)] bg-[var(--card)]/80 backdrop-blur-xl">
       {/* Left: Mobile menu + Month selector */}
       <div className="flex items-center gap-3">
         {/* Mobile hamburger */}

@@ -410,7 +410,7 @@ export default function SubscriptionsPage() {
 
       {/* Summary cards */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
@@ -422,7 +422,7 @@ export default function SubscriptionsPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
             <p className="text-sm font-medium text-[var(--muted-foreground)]">
               Total mensuel
@@ -487,7 +487,7 @@ export default function SubscriptionsPage() {
 
       {/* Subscription cards grid */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonCard key={i} />
           ))}
@@ -509,7 +509,7 @@ export default function SubscriptionsPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
           {subscriptions.map((sub) => {
             const daysUntil = differenceInDays(
               parseISO(sub.next_billing_date),

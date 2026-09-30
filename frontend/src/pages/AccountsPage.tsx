@@ -212,7 +212,7 @@ export default function AccountsPage() {
       )}
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 space-y-4 animate-pulse">
               <div className="flex items-center space-x-3">
@@ -246,7 +246,7 @@ export default function AccountsPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5"
         >
           {accounts.map((account, index) => {
             const Icon = resolveIcon(account.icon)

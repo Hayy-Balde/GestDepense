@@ -360,7 +360,7 @@ export default function BudgetsPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                 {byCategory.categories.map((cat, i) => {
                   const catConfig = findCategoryBySlug(expenseCategories, cat.category.id) ||
                     findCategoryBySlug(expenseCategories, cat.category.name)

@@ -337,7 +337,7 @@ export default function SavingsPage() {
       )}
 
       {loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
               <CardContent className="p-5 space-y-3">
@@ -366,7 +366,7 @@ export default function SavingsPage() {
       )}
 
       {!loading && savings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
           {savings.map((saving, index) => (
             <motion.div
               key={saving.id}
