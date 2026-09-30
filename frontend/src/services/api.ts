@@ -85,6 +85,15 @@ export const categoryService = {
   getAll: (params?: Record<string, unknown>) => api.get("/categories", { params }),
 };
 
+export const quickEntryService = {
+  /**
+   * Enregistre un lot d'écritures (dépenses et revenus mélangés) en un seul
+   * appel. L'API est atomique : si une ligne est invalide, rien n'est écrit et
+   * les erreurs reviennent indexées par ligne (`entries.0.amount`).
+   */
+  create: (entries: unknown) => api.post("/quick-entries", { entries }),
+};
+
 export const reportService = {
   summary: (params?: Record<string, unknown>) => api.get("/reports/summary", { params }),
 };

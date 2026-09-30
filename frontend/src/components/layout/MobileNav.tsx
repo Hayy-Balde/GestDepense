@@ -3,10 +3,11 @@ import { useState } from 'react'
 import {
   LayoutDashboard, ArrowDownCircle, ArrowUpCircle, Calculator, Plus, X,
   Wallet, FolderOpen, History, ArrowRightLeft, FileSpreadsheet, PiggyBank,
-  RefreshCw, HandCoins, Receipt, BarChart3, Settings, Lock, LogOut, Settings2,
+  RefreshCw, HandCoins, Receipt, BarChart3, Settings, Lock, LogOut, Settings2, ListPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
+import { authService } from '@/services/auth'
 import { lockSession } from '@/lib/lockSession'
 
 const primaryItems = [
@@ -17,6 +18,7 @@ const primaryItems = [
 ]
 
 const extraItems = [
+  { path: '/saisie-rapide', label: 'Saisie rapide', icon: ListPlus },
   { path: '/comptes', label: 'Comptes', icon: Wallet },
   { path: '/caisses', label: 'Caisses', icon: FolderOpen },
   { path: '/mouvements', label: 'Mouvements', icon: History },
@@ -39,7 +41,9 @@ export function MobileNav() {
 
   const handleLogout = () => {
     setPlusOpen(false)
-    logout()
+    // Révoquer le jeton côté serveur : sans cet appel, effacer le localStorage
+    // ne fait que masquer la session, qui reste valide jusqu'à expiration.
+    authService.logout().catch(() => undefined).finally(logout)
   }
 
   const isActive = (path: string) =>

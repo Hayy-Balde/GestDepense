@@ -46,8 +46,8 @@ export default function DebtPaymentDialog({
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
-      account_id: null,
-      caisse_id: null,
+      account_id: undefined,
+      caisse_id: undefined,
     },
   })
   const { register, handleSubmit, reset, formState, watch, setValue, clearErrors } = form
@@ -55,12 +55,14 @@ export default function DebtPaymentDialog({
 
   useEffect(() => {
     if (!open) return
+    // On repart de la cible liée à la dette si elle existe : c'est le compte ou
+    // la caisse que l'utilisateur a choisi à la création, le plus probable.
     reset({
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
-      account_id: accounts[0]?.id ?? null,
-      caisse_id: null,
+      account_id: debt?.account_id ?? accounts[0]?.id ?? undefined,
+      caisse_id: debt?.caisse_id ?? undefined,
     })
   }, [open, debt, accounts, reset])
 

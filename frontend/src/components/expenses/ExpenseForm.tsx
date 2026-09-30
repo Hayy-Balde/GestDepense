@@ -110,8 +110,7 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
 
         setLoadingOptions(false)
       })
-      .catch(err => {
-        console.error(err)
+      .catch(() => {
         setErrorOptions('Impossible de charger les comptes et catégories.')
         setLoadingOptions(false)
       })
@@ -125,7 +124,6 @@ export default function ExpenseForm({ onSuccess, onCancel }: ExpenseFormProps) {
       toastSuccess((res.data as { message?: string })?.message || 'Dépense enregistrée avec succès.')
       onSuccess()
     } catch (error: unknown) {
-      console.error(error)
       const err = error as { response?: { data?: { message?: string } } }
       const msg = err.response?.data?.message || 'Erreur lors de la création de la dépense.'
       setSubmitError(msg)

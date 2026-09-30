@@ -166,7 +166,7 @@ const summaryCurrency = caisses.length > 0
 
   if (loading) {
     return (
-      <div className="p-6 max-w-7xl mx-auto space-y-6 bg-[var(--background)] min-h-[100dvh]">
+      <div className="p-6 space-y-6 bg-[var(--background)] min-h-[100dvh]">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl shimmer" />
           <div className="space-y-2">
@@ -197,7 +197,7 @@ const summaryCurrency = caisses.length > 0
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-[var(--background)] min-h-[100dvh]">
+    <div className="p-6 space-y-6 bg-[var(--background)] min-h-[100dvh]">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center">

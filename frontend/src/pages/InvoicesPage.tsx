@@ -133,6 +133,14 @@ export default function InvoicesPage() {
   })
   const createDirection = useWatch({ control: createForm.control, name: 'direction' })
 
+  // Une facture émise s'encaisse sur un compte : si l'utilisateur bascule de
+  // « reçue » à « émise », la caisse choisie devient invalide.
+  useEffect(() => {
+    if (createDirection === 'issued' && createForm.watch('caisse_id')) {
+      createForm.setValue('caisse_id', undefined, { shouldValidate: true })
+    }
+  }, [createDirection, createForm])
+
   const paymentForm = useForm<PaymentFormData>({
     defaultValues: {
       amount: 0,
@@ -248,12 +256,13 @@ export default function InvoicesPage() {
   function openPaymentDialog(invoice: Invoice) {
     setSelectedInvoice(invoice)
     setPaymentError(null)
+    // Cible liée à la facture par défaut, sinon premier compte.
     paymentForm.reset({
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       note: '',
-      account_id: accounts[0]?.id ?? '',
-      caisse_id: '',
+      account_id: invoice.account_id ?? accounts[0]?.id ?? '',
+      caisse_id: invoice.caisse_id ?? '',
     })
     setShowPaymentDialog(true)
   }
@@ -325,7 +334,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center space-x-2">

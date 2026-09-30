@@ -145,7 +145,7 @@ export default function DebtsPage() {
   const activeTypeLabel = debtTypes.find((t) => t.value === activeTab)?.label ?? 'Dettes'
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center space-x-2">

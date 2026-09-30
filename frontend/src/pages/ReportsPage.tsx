@@ -114,7 +114,6 @@ export default function ReportsPage() {
         success('Rapport PDF téléchargé avec succès.')
       }
     } catch (e) {
-      console.error(e)
       const msg = getApiErrorMessage(e, 'Impossible de générer le rapport.')
       setError(msg)
       toastError(msg)

@@ -45,17 +45,24 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     const { error, errorInfo } = this.state
 
-    const stack = [
-      error?.stack?.trim() || error?.message?.trim() || null,
-      errorInfo?.componentStack?.trim() ? `\n--- Arborescence React ---\n${errorInfo.componentStack.trim()}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n')
+    // Les traces d'erreur reveals l'arborescence des composants, les chemins
+    // de fichiers et les noms de variables internes : exploitable pour
+    // cartographier l'application. Elles ne sont donc affichées qu'en local.
+    const isDev = import.meta.env.DEV
+
+    const stack = isDev
+      ? [
+          error?.stack?.trim() || error?.message?.trim() || null,
+          errorInfo?.componentStack?.trim() ? `\n--- Arborescence React ---\n${errorInfo.componentStack.trim()}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : null
 
     return (
       <ErrorFallback
         title="Oups, un problème est survenu"
-        message={error?.message || 'Une erreur inattendue est survenue.'}
+        message={isDev && error?.message ? error.message : 'Une erreur inattendue est survenue.'}
         errorStack={stack || null}
         onReload={this.handleReload}
         onHome={this.handleHome}

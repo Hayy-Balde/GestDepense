@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
-import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/stores/authStore";
+import type { User } from "@/types/auth";
 
 interface LoginForm {
   email: string;
@@ -20,6 +21,8 @@ export default function LoginPage() {
   const { setAuth } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState("");
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [otp, setOtp] = useState("");
 
   const {
     register,
@@ -27,12 +30,43 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ defaultValues: { remember: true } });
 
+  const finishLogin = (payload: { access_token: string; user: User }) => {
+    setAuth(payload.user, payload.access_token);
+    navigate("/", { replace: true });
+  };
+
+  const submitOtp = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!challenge) return;
+    setServerError("");
+    try {
+      const res = await authService.verifyTwoFactorLogin(challenge, otp);
+      finishLogin(res);
+    } catch (err: unknown) {
+      const error = err as {
+        response?: { data?: { message?: string; errors?: { code?: string[]; challenge?: string[] } } };
+      };
+      setServerError(
+        error.response?.data?.message
+          || error.response?.data?.errors?.code?.[0]
+          || error.response?.data?.errors?.challenge?.[0]
+          || "Code de vérification invalide.",
+      );
+    }
+  };
+
   const onSubmit = async (data: LoginForm) => {
     setServerError("");
     try {
       const res = await authService.login(data);
-      setAuth(res.user, res.access_token);
-      navigate("/", { replace: true });
+
+      if ("two_factor_required" in res) {
+        setChallenge(res.challenge);
+        setOtp("");
+        return;
+      }
+
+      finishLogin(res);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string; errors?: { email?: string[] } } } };
       const msg = error.response?.data?.message
@@ -41,6 +75,62 @@ export default function LoginPage() {
       setServerError(msg);
     }
   };
+
+  if (challenge !== null) {
+    return (
+      <AuthLayout
+        title="Vérification en deux étapes"
+        subtitle="Saisissez le code de votre application d'authentification"
+        icon={<ShieldCheck className="w-6 h-6" />}
+      >
+        <form onSubmit={submitOtp} className="space-y-4">
+          {serverError && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-2 p-3 rounded-lg bg-[var(--destructive-bg)] border border-[var(--destructive-border)] text-sm text-[var(--destructive)]"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{serverError}</span>
+            </motion.div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--foreground)]">Code de vérification</label>
+            <Input
+              autoFocus
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={12}
+              placeholder="000000 ou code de récupération"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              className="h-11 text-center tracking-[0.3em] bg-[var(--secondary)]/50 border-[var(--input)] focus:bg-[var(--card)] focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20 transition-all"
+            />
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Vous pouvez aussi utiliser l'un de vos codes de récupération.
+            </p>
+          </div>
+
+          <Button type="submit" disabled={otp.length === 0} className="w-full h-11 rounded-xl text-sm font-semibold shadow-lg shadow-[var(--primary)]/20 transition-shadow">
+            Vérifier
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setChallenge(null);
+              setOtp("");
+              setServerError("");
+            }}
+            className="w-full text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+          >
+            Revenir à la connexion
+          </button>
+        </form>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout

@@ -1,0 +1,22 @@
+# Fichiers d'environnement : ne jamais commiter de secrets.
+# `frontend/.env` était suivi, `backend/.env` ne l'est plus.
+.env
+.env.*
+!.env.example
+
+node_modules
+/dist
+/build
+
+# Artefacts de build backend
+backend/vendor
+backend/storage/logs/*
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*.php
+backend/.phpunit.result.cache
+
+.DS_Store
+Thumbs.db
+*.log

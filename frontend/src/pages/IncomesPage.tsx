@@ -227,7 +227,7 @@ export default function IncomesPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[var(--border)]">
           <div className="flex items-center space-x-2">
             <Skeleton className="w-10 h-10 rounded-lg" />
@@ -254,7 +254,7 @@ export default function IncomesPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="p-6 space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center space-x-2">

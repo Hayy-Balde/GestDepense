@@ -1,10 +1,16 @@
 import { api } from "./api";
-import type { LoginRequest, RegisterRequest, ForgotPasswordRequest, ResetPasswordRequest } from "@/types/auth";
+import type { LoginRequest, RegisterRequest, ForgotPasswordRequest, ResetPasswordRequest, User } from "@/types/auth";
 
 export const authService = {
   login: async (data: LoginRequest) => {
     const res = await api.post("/auth/login", data);
-    return res.data;
+    return res.data as
+      | { two_factor_required: true; challenge: string }
+      | { access_token: string; user: User };
+  },
+  verifyTwoFactorLogin: async (challenge: string, code: string) => {
+    const res = await api.post("/auth/login/2fa", { challenge, code });
+    return res.data as { access_token: string; user: User };
   },
   register: async (data: RegisterRequest) => {
     const res = await api.post("/auth/register", data);

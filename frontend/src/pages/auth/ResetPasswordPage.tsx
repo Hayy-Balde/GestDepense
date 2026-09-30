@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
 import { motion } from "framer-motion";
@@ -21,6 +21,18 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState("");
   const [success, setSuccess] = useState(false);
+  // `useState` ferait perdre le token dès le premier rendu ; une ref permet de
+  // le lire une seule fois puis de purger l'URL.
+  const params = useRef({ token, email });
+
+  // Le jeton de réinitialisation est un secret à usage unique. Le laisser dans
+  // l'URL l'expose dans l'historique du navigateur, le `Referer` envoyé aux
+  // ressources tierces et la télémétrie. On le retire de l'adresse une fois lu.
+  useEffect(() => {
+    if (!token) return;
+
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [token]);
 
   const {
     register,
@@ -35,8 +47,8 @@ export default function ResetPasswordPage() {
     setServerError("");
     try {
       await authService.resetPassword({
-        token,
-        email,
+        token: params.current.token,
+        email: params.current.email,
         password: data.password,
         password_confirmation: data.password_confirmation,
       });

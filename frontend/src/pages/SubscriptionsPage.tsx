@@ -50,6 +50,7 @@ const MOCK_SUBSCRIPTIONS: Subscription[] = [
     id: 'mock-1',
     user_id: '',
     account_id: null,
+    caisse_id: null,
     name: 'Netflix',
     amount: 29900,
     currency_code: 'GNF',
@@ -68,6 +69,7 @@ const MOCK_SUBSCRIPTIONS: Subscription[] = [
     id: 'mock-2',
     user_id: '',
     account_id: null,
+    caisse_id: null,
     name: 'Spotify',
     amount: 9900,
     currency_code: 'GNF',
@@ -86,6 +88,7 @@ const MOCK_SUBSCRIPTIONS: Subscription[] = [
     id: 'mock-3',
     user_id: '',
     account_id: null,
+    caisse_id: null,
     name: 'Dropbox',
     amount: 15000,
     currency_code: 'GNF',
@@ -104,6 +107,7 @@ const MOCK_SUBSCRIPTIONS: Subscription[] = [
     id: 'mock-4',
     user_id: '',
     account_id: null,
+    caisse_id: null,
     name: 'Amazon Prime',
     amount: 79000,
     currency_code: 'GNF',
@@ -372,7 +376,7 @@ export default function SubscriptionsPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="p-6 space-y-6 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[var(--border)]">
         <div>

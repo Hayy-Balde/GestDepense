@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ArrowDownCircle, ArrowUpCircle, Wallet, FolderOpen,
   PiggyBank, Calculator, RefreshCw, HandCoins, BarChart3, Settings,
   ChevronLeft, ChevronRight, LogOut, X, ChevronDown, Building2, CreditCard,
-  Bitcoin, Tags, History, ArrowRightLeft, FileSpreadsheet, Receipt,
+  Bitcoin, Tags, History, ArrowRightLeft, FileSpreadsheet, Receipt, ListPlus,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,7 @@ const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/depenses', label: 'Dépenses', icon: ArrowDownCircle },
     { path: '/revenus', label: 'Revenus', icon: ArrowUpCircle },
+    { path: '/saisie-rapide', label: 'Saisie rapide', icon: ListPlus },
     { path: '/comptes', label: 'Comptes', icon: Wallet },
   ]},
   { section: 'Finances', items: [

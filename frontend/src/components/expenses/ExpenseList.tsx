@@ -55,7 +55,7 @@ export default function ExpenseList() {
         setCategories(cats.filter((c: Category) => c.type === 'expense'))
         setAccounts(accs)
       })
-      .catch(err => console.error('Error loading filter options:', err))
+      .catch(() => toastError('Impossible de charger les comptes et catégories.'))
   }, [])
 
   // Fetch Expenses with filters and page
@@ -86,8 +86,8 @@ export default function ExpenseList() {
         }
         setLoading(false)
       })
-      .catch(err => {
-        console.error('Error loading expenses:', err)
+      .catch(() => {
+        toastError('Impossible de charger les dépenses.')
         setLoading(false)
       })
   }

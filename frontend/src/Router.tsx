@@ -14,6 +14,7 @@ const CallbackPage    = React.lazy(() => import("./pages/auth/CallbackPage"));
 // App pages
 const DashboardPage     = React.lazy(() => import("./pages/DashboardPage"));
 const ExpensesPage      = React.lazy(() => import("./pages/ExpensesPage"));
+const QuickEntryPage    = React.lazy(() => import("./pages/QuickEntryPage"));
 const IncomesPage       = React.lazy(() => import("./pages/IncomesPage"));
 const AccountsPage      = React.lazy(() => import("./pages/AccountsPage"));
 const CaissesPage       = React.lazy(() => import("./pages/CaissesPage"));
@@ -109,6 +110,10 @@ const router = createBrowserRouter([
       {
         path: "revenus",
         element: <React.Suspense fallback={<Fallback />}><IncomesPage /></React.Suspense>,
+      },
+      {
+        path: "saisie-rapide",
+        element: <React.Suspense fallback={<Fallback />}><QuickEntryPage /></React.Suspense>,
       },
       // Comptes
       {

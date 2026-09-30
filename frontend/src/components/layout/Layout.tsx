@@ -11,7 +11,7 @@ export default function Layout() {
   const handleLogout = async () => {
     try {
       await authService.logout();
-    } catch(e) { console.error(e) }
+    } catch { /* le store est optionnel : on n'interrompt pas l'affichage */ }
     logout();
     navigate("/login");
   };

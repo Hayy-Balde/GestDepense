@@ -18,7 +18,11 @@ export function AppLayout() {
         <Header />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full pb-24 lg:pb-8">
+          {/* Pleine largeur : le contenu occupe toute la place restante à côté
+              de la sidebar. Les pages qui doivent rester étroites (paramètres,
+              migration) limitent elles-mêmes leur largeur, plutôt que d'imposer
+              ici une contrainte à toute l'application. */}
+          <div className="p-4 md:p-6 lg:p-8 w-full pb-24 lg:pb-8">
             <Outlet />
           </div>
         </main>
